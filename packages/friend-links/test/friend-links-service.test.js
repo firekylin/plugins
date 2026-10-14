@@ -42,6 +42,17 @@ test('creates, edits, filters and removes friend links', async() => {
   await assert.rejects(() => service.remove('missing'), /not found/);
 });
 
+test('appends and moves links without manually entered sort values', async() => {
+  const {service} = fixture();
+  const first = await service.save({name: 'A', url: 'https://a.example'});
+  const second = await service.save({name: 'B', url: 'https://b.example'});
+  assert.deepEqual((await service.list()).items.map(link => link.id), [first.id, second.id]);
+  assert.equal(await service.move(second.id, 'up'), true);
+  assert.deepEqual((await service.list()).items.map(link => link.id), [second.id, first.id]);
+  assert.equal(await service.move(second.id, 'up'), false);
+  assert.equal((await service.get(first.id)).name, 'A');
+});
+
 test('settings can disable all public results', async() => {
   const {service} = fixture();
   await service.save({name: 'A', url: 'https://a.example'});
@@ -62,6 +73,7 @@ test('registers a supported sidebar icon and separate management pages', () => {
   const panels = [];
   const pages = [];
   const forms = [];
+  const actions = [];
   class Widget {}
   plugin.register({
     widgets: {Widget, register() {}},
@@ -70,10 +82,12 @@ test('registers a supported sidebar icon and separate management pages', () => {
     admin: {
       registerPanel(value) { panels.push(value) },
       registerPage(value) { pages.push(value) },
-      registerForm(value) { forms.push(value) }
+      registerForm(value) { forms.push(value) },
+      registerAction(value) { actions.push(value) }
     }
   });
   assert.equal(panels[0].icon, 'contact');
-  assert.deepEqual(pages.map(page => page.id), ['manage', 'settings']);
-  assert.deepEqual(forms.map(form => form.page), ['manage', 'manage', 'settings']);
+  assert.deepEqual(pages.map(page => page.id), ['manage', 'edit', 'settings']);
+  assert.deepEqual(forms.map(form => form.page), ['edit', 'settings']);
+  assert.deepEqual(actions.map(action => action.id), ['move-link', 'delete-link']);
 });

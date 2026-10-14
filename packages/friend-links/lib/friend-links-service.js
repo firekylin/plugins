@@ -111,12 +111,20 @@ class FriendLinksService {
     return {page, pageSize, total, items: links.slice((page - 1) * pageSize, page * pageSize)};
   }
 
+  async get(id) {
+    const link = (await this.read()).links.find(item => item.id === String(id || '').trim());
+    if (!link) throw Object.assign(new Error('Friend link was not found'), {status: 404});
+    return link;
+  }
+
   async save(input) {
     const current = await this.read();
     const requestedId = String(input.id || '').trim();
     const index = requestedId ? current.links.findIndex(link => link.id === requestedId) : -1;
     if (requestedId && index === -1) throw Object.assign(new Error('Friend link was not found'), {status: 404});
-    const existing = index >= 0 ? current.links[index] : {};
+    const existing = index >= 0 ? current.links[index] : {
+      order: current.links.reduce((maximum, link) => Math.max(maximum, Number(link.order || 0)), -1) + 1
+    };
     const link = normalizeLink(input, existing, this.now(), this.createId);
     if (current.links.some(item => item.id !== link.id && item.url === link.url)) {
       throw Object.assign(new Error('A friend link with this URL already exists'), {status: 409});
@@ -134,6 +142,21 @@ class FriendLinksService {
     const next = current.links.filter(link => link.id !== linkId);
     if (next.length === current.links.length) throw Object.assign(new Error('Friend link was not found'), {status: 404});
     current.links = next;
+    await this.write(current);
+    return true;
+  }
+
+  async move(id, direction) {
+    if (!['up', 'down'].includes(direction)) throw Object.assign(new Error('Invalid move direction'), {status: 400});
+    const current = await this.read();
+    const links = sortLinks(current.links);
+    const index = links.findIndex(link => link.id === String(id || '').trim());
+    if (index === -1) throw Object.assign(new Error('Friend link was not found'), {status: 404});
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= links.length) return false;
+    [links[index], links[target]] = [links[target], links[index]];
+    links.forEach((link, order) => { link.order = order });
+    current.links = links;
     await this.write(current);
     return true;
   }
