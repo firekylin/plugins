@@ -1,5 +1,5 @@
 {
-  "name": "@firekylin/plugin-relate-post",
+  "name": "firekylin-plugin-relate-post",
   "version": "1.0.0",
   "description": "Related post recommendations for Firekylin",
   "main": "plugin.js",
