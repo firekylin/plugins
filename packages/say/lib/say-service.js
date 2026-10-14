@@ -10,7 +10,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
   pageSize: 10,
   apiKey: '',
-  authorId: 1
+  authorId: 1,
+  amapKey: '',
+  wecomCorpId: '',
+  wecomCorpSecret: '',
+  wecomToken: '',
+  wecomEncodingAESKey: ''
 });
 
 function parse(value, fallback = {}) {
@@ -29,11 +34,23 @@ function normalizeSettings(value = {}, previous = {}) {
   if (typeof value.apiKey === 'string' && value.apiKey && value.apiKey.length < 16) {
     throw Object.assign(new Error('API key must be at least 16 characters'), {status: 400});
   }
+  if (typeof value.wecomEncodingAESKey === 'string' && value.wecomEncodingAESKey &&
+      !/^[A-Za-z0-9+/]{43}$/.test(value.wecomEncodingAESKey)) {
+    throw Object.assign(new Error('WeCom EncodingAESKey must be 43 characters'), {status: 400});
+  }
   return {
     enabled: value.enabled !== false,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,
-    authorId: integer(value.authorId, prior.authorId, 1, Number.MAX_SAFE_INTEGER)
+    authorId: integer(value.authorId, prior.authorId, 1, Number.MAX_SAFE_INTEGER),
+    amapKey: typeof value.amapKey === 'string' ? value.amapKey.trim().slice(0, 256) : prior.amapKey,
+    wecomCorpId: typeof value.wecomCorpId === 'string' ? value.wecomCorpId.trim().slice(0, 128) : prior.wecomCorpId,
+    wecomCorpSecret: typeof value.wecomCorpSecret === 'string' && value.wecomCorpSecret
+      ? value.wecomCorpSecret.trim().slice(0, 256) : prior.wecomCorpSecret,
+    wecomToken: typeof value.wecomToken === 'string' && value.wecomToken
+      ? value.wecomToken.trim().slice(0, 256) : prior.wecomToken,
+    wecomEncodingAESKey: typeof value.wecomEncodingAESKey === 'string' && value.wecomEncodingAESKey
+      ? value.wecomEncodingAESKey.trim().slice(0, 256) : prior.wecomEncodingAESKey
   };
 }
 
@@ -217,9 +234,36 @@ class SayService {
     return {...data, id: Number(id && id.id || id), createdAt: now, updatedAt: now};
   }
 
+  async get(id) {
+    id = integer(id, 0, 1, Number.MAX_SAFE_INTEGER);
+    if (!id) throw Object.assign(new Error('Valid say ID is required'), {status: 400});
+    const row = await this.model().setRelation(false).where({type: SAY_TYPE, id}).find();
+    if (!row || !row.id) throw Object.assign(new Error('Say was not found'), {status: 404});
+    return decode(row);
+  }
+
+  async update(id, input) {
+    const current = await this.get(id);
+    const data = normalize({...current, ...input});
+    const visibility = databaseStatus(data.status);
+    await this.model().savePost({id: current.id, ...visibility, title: data.kind,
+      summary: data.text.slice(0, 200), markdown_content: data.text, content: data.text,
+      update_time: this.now(), options: JSON.stringify({say: data})});
+    return this.get(current.id);
+  }
+
+  async duplicate(id, authorId) {
+    const current = await this.get(id);
+    const copy = {...current};
+    delete copy.id;
+    delete copy.createdAt;
+    delete copy.updatedAt;
+    return this.create(copy, authorId);
+  }
+
   async all() {
     return (await this.model().setRelation(false).where({type: SAY_TYPE})
-      .order('create_time DESC').limit(1000).select()).map(decode);
+      .order('create_time DESC').select()).map(decode);
   }
 
   async list({page = 1, pageSize, tag, status, keyword, publicOnly = false} = {}) {

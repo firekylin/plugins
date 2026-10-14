@@ -36,6 +36,11 @@ function fixture() {
       this.orderValue = null;
       return selected.map(row => ({...row}));
     }
+    async find() {
+      const row = rows.find(item => matches(item, this.condition));
+      this.condition = null;
+      return row ? {...row} : {};
+    }
     async update(value) {
       const selected = rows.filter(row => matches(row, this.condition));
       selected.forEach(row => Object.assign(row, value));
@@ -74,8 +79,10 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.equal(item.images[0], 'https://example.test/a.jpg');
   assert.throws(() => normalize({kind: 'image', images: 'file:///etc/passwd'}), /HTTP or HTTPS/);
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
-    {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1});
+    {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
+      wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: ''});
   assert.throws(() => normalizeSettings({apiKey: 'short'}), /at least 16/);
+  assert.throws(() => normalizeSettings({wecomEncodingAESKey: 'short'}), /43 characters/);
 });
 
 test('creates isolated type-3 records and only exposes public says', async() => {
@@ -99,6 +106,19 @@ test('updates status, deletes records and retains unrelated post types', async()
   assert.equal((await service.list({status: 'hidden'})).total, 2);
   assert.equal(await service.remove('1,99'), 1);
   assert.equal(rows.some(row => row.id === 99), true);
+});
+
+test('gets, edits and duplicates individual says', async() => {
+  const {service} = fixture();
+  await service.create({kind: 'text', text: 'Original', status: 'public'}, 1);
+  const edited = await service.update(1, {kind: 'text', text: 'Edited #tag', status: 'private'});
+  assert.equal(edited.text, 'Edited #tag');
+  assert.equal(edited.status, 'private');
+  assert.deepEqual(edited.tags, ['tag']);
+  const copy = await service.duplicate(1, 9);
+  assert.equal(copy.id, 2);
+  assert.equal(copy.text, 'Edited #tag');
+  await assert.rejects(service.get(999), /not found/);
 });
 
 test('merges compatible say types', async() => {
