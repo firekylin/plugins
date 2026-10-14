@@ -1,0 +1,21 @@
+{
+  "name": "@firekylin/plugin-relate-post",
+  "version": "1.0.0",
+  "description": "Related post recommendations for Firekylin",
+  "main": "plugin.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.10.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "relate-post",
+    "entry": "plugin.js",
+    "permissions": ["content:read", "settings:write"]
+  },
+  "files": ["lib", "plugin.js", "README.md"]
+}
