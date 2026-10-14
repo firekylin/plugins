@@ -10,7 +10,18 @@ packages through `pnpm-workspace.yaml`.
 
 ## Available plugins
 
-- [`@firekylin/plugin-backup`](packages/backup): create manual or scheduled SQL backups and save them locally, send them by email, or both.
-- [`@firekylin/plugin-comment-import`](packages/comment-import): import comments from Waline, Valine,
+- [`firekylin-plugin-backup`](packages/backup): create manual or scheduled SQL backups and save them locally, send them by email, or both.
+- [`firekylin-plugin-comment-import`](packages/comment-import): import comments from Waline, Valine,
   Artalk, Twikoo, Gitalk, Giscus, and Commento.
 - [`@firekylin/plugin-relate-post`](packages/relate-post): recommend related public posts using shared tags and categories.
+
+## Publishing
+
+Packages are published automatically through npm trusted publishing after their
+version is changed on the `main` branch. Only direct workspace packages matching
+`packages/*/package.json` are considered.
+
+Publish each new package manually once with `npm publish --access public`. Then
+configure its trusted publisher on npm with the GitHub organization
+`firekylin`, repository `plugins`, and workflow filename `publish.yml`. No npm
+access token is stored in GitHub.

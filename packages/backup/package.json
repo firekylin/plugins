@@ -1,9 +1,14 @@
 {
-  "name": "@firekylin/plugin-backup",
+  "name": "firekylin-plugin-backup",
   "version": "1.0.0",
   "description": "Manual and scheduled SQL backups for Firekylin",
   "main": "plugin.js",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/backup"
+  },
   "engines": {
     "node": ">=22.13.0",
     "firekylin": ">=2.10.0"

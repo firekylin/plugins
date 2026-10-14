@@ -1,0 +1,103 @@
+name: Publish packages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - packages/*/package.json
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Find version changes
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.packages.outputs.packages }}
+      has-changes: ${{ steps.packages.outputs.has-changes }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find packages with a new version
+        id: packages
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          packages="$(node .github/scripts/changed-packages.mjs "$BEFORE" "$GITHUB_SHA")"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          if [[ "$packages" == "[]" ]]; then
+            echo "has-changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Test
+    needs: changes
+    if: needs.changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+  publish:
+    name: Publish ${{ matrix.package.name }}@${{ matrix.package.version }}
+    needs:
+      - changes
+      - test
+    if: needs.changes.outputs.has-changes == 'true' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.changes.outputs.packages) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Set up npm trusted publishing
+        run: npm install --global npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish package
+        working-directory: ${{ matrix.package.directory }}
+        run: npm publish --access public

@@ -13,7 +13,7 @@ Supported database adapters:
 Add the package to the Firekylin site project and restart Firekylin:
 
 ```sh
-pnpm add @firekylin/plugin-backup
+pnpm add firekylin-plugin-backup
 ```
 
 Open **备份 → 数据库备份** in the admin sidebar. Save the settings, then run one manual backup and test restoring it before enabling the schedule.

@@ -1,9 +1,14 @@
 {
-  "name": "@firekylin/plugin-comment-import",
+  "name": "firekylin-plugin-comment-import",
   "version": "1.0.0",
   "description": "Import comments from Waline, Valine, Artalk, Twikoo, Gitalk, Giscus and Commento into Firekylin",
   "main": "plugin.js",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/comment-import"
+  },
   "engines": {
     "node": ">=22.13.0",
     "firekylin": ">=2.10.0"

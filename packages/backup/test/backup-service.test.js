@@ -18,7 +18,9 @@ class FakeCron {
 function models(config = {}, transactional = false) {
   const values = {plugin_backup_config: JSON.stringify(config)};
   let transactions = 0;
+  let inTransaction = false;
   const query = async sql => {
+    if (transactional) assert.equal(inTransaction, true);
     if (sql.includes("type='table' AND name NOT")) return [{name: 'fk_options'}];
     if (sql.includes("tbl_name='fk_options'")) return [{type: 'table', name: 'fk_options',
       sql: 'CREATE TABLE "fk_options" ("key" TEXT, "value" TEXT)'}];
@@ -31,12 +33,12 @@ function models(config = {}, transactional = false) {
     query
   };
   if (transactional) {
-    model.transaction = async handler => { transactions += 1; return handler({transaction: true}) };
-    model.db = () => ({query: (options, connection) => {
-      assert.equal(connection.transaction, true);
-      assert.equal(options.debounce, false);
-      return query(options.sql);
-    }});
+    model.transaction = async handler => {
+      transactions += 1;
+      inTransaction = true;
+      try { return await handler({transaction: true}) } finally { inTransaction = false }
+    };
+    model.db = () => ({query: {connection: {transaction: true}}});
   }
   return {values, getModel: () => model, transactions: () => transactions};
 }
