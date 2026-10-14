@@ -16,7 +16,7 @@ The plugin requires Firekylin 2.10.0 or newer because it uses the declarative ad
 Add this package as a direct dependency of a Firekylin site project, then restart Firekylin:
 
 ```sh
-pnpm add @firekylin/plugin-comment-import
+pnpm add firekylin-plugin-comment-import
 ```
 
 Open **评论导入 → 第三方评论导入** in the admin sidebar. Select the source, paste the exported JSON, leave **仅预演** enabled, and process the preview. Back up the database before the real import.
