@@ -15,6 +15,9 @@ packages through `pnpm-workspace.yaml`.
   Artalk, Twikoo, Gitalk, Giscus, and Commento.
 - [`firekylin-plugin-say`](packages/say): publish and manage lightweight microblog posts with tags,
   media links, a public page, theme integrations, and an API-key-protected publishing endpoint.
+- [`firekylin-plugin-friend-links`](packages/friend-links): manage categorized friend links and expose
+  them through a standalone page, JSON API, template function, and theme widget.
+- [`@firekylin/plugin-relate-post`](packages/relate-post): recommend related public posts using shared tags and categories.
 
 ## Publishing
 
