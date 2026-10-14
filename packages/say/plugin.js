@@ -173,8 +173,8 @@ module.exports = {
       load: async() => {
         const result = await service.list({pageSize: 100});
         return {sections: [
-          {type: 'form', id: 'publish-say'},
-          {type: 'table', title: `最近的碎语（共 ${result.total} 条）`, rowKey: 'id', pagination: true, columns: [
+          {type: 'table', title: `最近的碎语（共 ${result.total} 条）`, rowKey: 'id', pagination: true,
+            toolbar: [{label: '新增碎语', href: '/admin/plugins/say/publish', type: 'primary'}], columns: [
             {key: 'id', title: 'ID'}, {key: 'kind', title: '类型'}, {key: 'status', title: '状态'},
             {key: 'content', title: '内容'}, {key: 'tags', title: '标签'}, {key: 'createdAt', title: '时间'},
             {key: 'actions', title: '操作', type: 'actions'}
@@ -192,6 +192,8 @@ module.exports = {
         ]};
       }
     });
+    ctx.admin.registerPage({id: 'publish', panel: 'say', title: '发布碎语', description: '发布文本、图片、语音、位置、链接或音乐。',
+      load: async() => ({sections: [{type: 'form', id: 'publish-say'}]})});
     ctx.admin.registerPage({id: 'edit', panel: 'say', title: '编辑碎语', description: '修改单条碎语的内容与状态。',
       load: async() => ({sections: [{type: 'form', id: 'edit-say'}]})});
     ctx.admin.registerPage({
@@ -205,7 +207,7 @@ module.exports = {
       ]})
     });
 
-    ctx.admin.registerForm({id: 'publish-say', page: 'manage', title: '发布碎语', submitLabel: '发布', fields: publishFields,
+    ctx.admin.registerForm({id: 'publish-say', page: 'publish', title: '碎语内容', submitLabel: '发布', fields: publishFields,
       load: async() => defaultPublish(), submit: async(values, context) => {
         const item = await service.create(await enrich(values), context.user.id);
         return {message: `碎语 #${item.id} 已发布。`, item};
