@@ -58,7 +58,7 @@ test('standalone page escapes user-controlled content and protects outbound link
   assert.match(html, /x=1&amp;y=2/);
 });
 
-test('registers a supported sidebar icon and a directly routable single page', () => {
+test('registers a supported sidebar icon and separate management pages', () => {
   const panels = [];
   const pages = [];
   const forms = [];
@@ -74,6 +74,6 @@ test('registers a supported sidebar icon and a directly routable single page', (
     }
   });
   assert.equal(panels[0].icon, 'contact');
-  assert.deepEqual(pages.map(page => page.id), ['manage']);
-  assert.equal(forms.every(form => form.page === 'manage'), true);
+  assert.deepEqual(pages.map(page => page.id), ['manage', 'settings']);
+  assert.deepEqual(forms.map(form => form.page), ['manage', 'manage', 'settings']);
 });
