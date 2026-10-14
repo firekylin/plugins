@@ -1,4 +1,7 @@
 {
   "name": "@firekylin/plugins",
-  "private": true
+  "private": true,
+  "scripts": {
+    "test": "pnpm --recursive test"
+  }
 }

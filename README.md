@@ -7,3 +7,8 @@ Create a `package.json` in each plugin directory and add that package's
 dependencies, scripts, and Firekylin plugin entry point there. Install
 dependencies from the repository root with `pnpm install`; pnpm discovers
 packages through `pnpm-workspace.yaml`.
+
+## Available plugins
+
+- [`@firekylin/plugin-comment-import`](packages/comment-import): import comments from Waline, Valine,
+  Artalk, Twikoo, Gitalk, Giscus, and Commento.
