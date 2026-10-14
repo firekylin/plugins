@@ -1,0 +1,12 @@
+{
+  "name": "firekylin-plugin-friend-links",
+  "version": "1.0.0",
+  "description": "Friend link management for Firekylin",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {"type": "git", "url": "git+https://github.com/firekylin/plugins.git", "directory": "packages/friend-links"},
+  "engines": {"node": ">=22.13.0", "firekylin": ">=2.10.0"},
+  "scripts": {"test": "node --test test/*.test.js"},
+  "firekylin": {"type": "plugin", "id": "friend-links", "entry": "plugin.js", "permissions": []},
+  "files": ["lib", "plugin.js", "README.md"]
+}
