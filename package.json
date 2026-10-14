@@ -1,4 +1,13 @@
 {
   "name": "@firekylin/plugins",
-  "private": true
+  "version": "0.0.0",
+  "private": true,
+  "description": "Official Firekylin plugins",
+  "workspaces": [
+    "packages/comment-import"
+  ],
+  "scripts": {
+    "test": "npm test --workspace=@firekylin/comment-import"
+  },
+  "license": "MIT"
 }

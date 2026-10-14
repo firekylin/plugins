@@ -1,0 +1,35 @@
+{
+  "name": "@firekylin/comment-import",
+  "version": "1.0.0",
+  "description": "Import comments from Valine, Waline, Twikoo, Artalk, Gitalk, Giscus and Commento into Firekylin",
+  "main": "plugin.js",
+  "files": [
+    "plugin.js",
+    "lib",
+    "public",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "firekylin",
+    "plugin",
+    "comments",
+    "migration"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18",
+    "firekylin": ">=2.5.5"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "comment-import",
+    "entry": "plugin.js",
+    "permissions": [
+      "comments:write",
+      "posts:read"
+    ]
+  }
+}

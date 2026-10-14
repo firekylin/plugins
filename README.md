@@ -1,9 +1,14 @@
 # Firekylin Plugins
 
-This repository is a pnpm monorepo for Firekylin plugins. Each plugin should
-live in its own package under `packages/`, for example `packages/example-plugin`.
+Firekylin 官方插件集合。
 
-Create a `package.json` in each plugin directory and add that package's
-dependencies, scripts, and Firekylin plugin entry point there. Install
-dependencies from the repository root with `pnpm install`; pnpm discovers
-packages through `pnpm-workspace.yaml`.
+## 插件
+
+- [`comment-import`](./packages/comment-import) — 从 Valine、Waline、Twikoo、Artalk、Gitalk、Giscus 和 Commento 导入评论。
+
+每个目录都是一个可独立发布的 npm 包。开发与测试：
+
+```bash
+npm install
+npm test
+```
