@@ -11,3 +11,5 @@ packages through `pnpm-workspace.yaml`.
 ## Available plugins
 
 - [`@firekylin/plugin-backup`](packages/backup): create manual or scheduled SQL backups and save them locally, send them by email, or both.
+- [`@firekylin/plugin-comment-import`](packages/comment-import): import comments from Waline, Valine,
+  Artalk, Twikoo, Gitalk, Giscus, and Commento.
