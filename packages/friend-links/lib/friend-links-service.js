@@ -3,6 +3,8 @@
 const crypto = require('node:crypto');
 
 const OPTION_KEY = 'plugin_friend_links';
+const SETTINGS_KEY = 'plugin_friend_links_settings';
+const LINK_PREFIX = 'plugin_friend_links_link_';
 const DEFAULT_SETTINGS = Object.freeze({enabled: true, pageSize: 50});
 const STATUSES = new Set(['active', 'inactive']);
 
@@ -77,29 +79,49 @@ class FriendLinksService {
 
   model() { return this.getModel('options') }
 
+  async options() { return this.model().getOptions(true) }
+
   async read() {
-    const row = await this.model().where({key: OPTION_KEY}).find();
-    return state(row && row.value);
+    const options = await this.options();
+    const legacy = state(options[OPTION_KEY]);
+    const stored = Object.entries(options).filter(([key]) => key.startsWith(LINK_PREFIX))
+      .map(([, value]) => parse(value, null)).filter(link => link && link.id);
+    const links = new Map(legacy.links.map(link => [link.id, link]));
+    stored.forEach(link => links.set(link.id, link));
+    return {
+      settings: options[SETTINGS_KEY] ? normalizeSettings(parse(options[SETTINGS_KEY]), legacy.settings) : legacy.settings,
+      links: [...links.values()]
+    };
   }
 
-  async write(value) {
-    await this.model().updateOptions(OPTION_KEY, JSON.stringify(value));
-    return value;
+  linkKey(id) { return `${LINK_PREFIX}${id}` }
+
+  async ensureMigrated() {
+    const options = await this.options();
+    const legacy = state(options[OPTION_KEY]);
+    if (!legacy.links.length) return;
+    const values = options[SETTINGS_KEY] ? {} : {[SETTINGS_KEY]: JSON.stringify(legacy.settings)};
+    sortLinks(legacy.links).forEach((link, order) => {
+      link.order = order;
+      const key = this.linkKey(link.id);
+      if (!options[key]) values[key] = JSON.stringify(link);
+    });
+    if (Object.keys(values).length) await this.model().updateOptions(values);
+    await this.model().where({key: OPTION_KEY}).delete();
   }
 
   async settings() { return (await this.read()).settings }
 
   async saveSettings(values) {
-    const current = await this.read();
-    current.settings = normalizeSettings(values, current.settings);
-    await this.write(current);
-    return current.settings;
+    const settings = normalizeSettings(values, await this.settings());
+    await this.model().updateOptions(SETTINGS_KEY, JSON.stringify(settings));
+    return settings;
   }
 
-  async list({page = 1, pageSize, category, keyword, publicOnly = false} = {}) {
+  async list({page = 1, pageSize, category, keyword, publicOnly = false, all = false} = {}) {
     const current = await this.read();
     page = integer(page, 1, 1, 100000);
-    pageSize = integer(pageSize, current.settings.pageSize, 1, 200);
+    pageSize = all === true ? Number.MAX_SAFE_INTEGER : integer(pageSize, current.settings.pageSize, 1, 200);
     let links = current.links;
     if (publicOnly) links = current.settings.enabled ? links.filter(link => link.status === 'active') : [];
     if (category) links = links.filter(link => link.category === String(category));
@@ -118,6 +140,7 @@ class FriendLinksService {
   }
 
   async save(input) {
+    await this.ensureMigrated();
     const current = await this.read();
     const requestedId = String(input.id || '').trim();
     const index = requestedId ? current.links.findIndex(link => link.id === requestedId) : -1;
@@ -129,24 +152,22 @@ class FriendLinksService {
     if (current.links.some(item => item.id !== link.id && item.url === link.url)) {
       throw Object.assign(new Error('A friend link with this URL already exists'), {status: 409});
     }
-    if (index >= 0) current.links[index] = link;
-    else current.links.push(link);
-    await this.write(current);
+    await this.model().updateOptions(this.linkKey(link.id), JSON.stringify(link));
     return link;
   }
 
   async remove(id) {
+    await this.ensureMigrated();
     const linkId = String(id || '').trim();
     if (!linkId) throw Object.assign(new Error('Friend link ID is required'), {status: 400});
     const current = await this.read();
-    const next = current.links.filter(link => link.id !== linkId);
-    if (next.length === current.links.length) throw Object.assign(new Error('Friend link was not found'), {status: 404});
-    current.links = next;
-    await this.write(current);
+    if (!current.links.some(link => link.id === linkId)) throw Object.assign(new Error('Friend link was not found'), {status: 404});
+    await this.model().where({key: this.linkKey(linkId)}).delete();
     return true;
   }
 
   async move(id, direction) {
+    await this.ensureMigrated();
     if (!['up', 'down'].includes(direction)) throw Object.assign(new Error('Invalid move direction'), {status: 400});
     const current = await this.read();
     const links = sortLinks(current.links);
@@ -154,12 +175,16 @@ class FriendLinksService {
     if (index === -1) throw Object.assign(new Error('Friend link was not found'), {status: 404});
     const target = direction === 'up' ? index - 1 : index + 1;
     if (target < 0 || target >= links.length) return false;
-    [links[index], links[target]] = [links[target], links[index]];
-    links.forEach((link, order) => { link.order = order });
-    current.links = links;
-    await this.write(current);
+    const currentOrder = links[index].order;
+    links[index].order = links[target].order;
+    links[target].order = currentOrder;
+    await this.model().updateOptions({
+      [this.linkKey(links[index].id)]: JSON.stringify(links[index]),
+      [this.linkKey(links[target].id)]: JSON.stringify(links[target])
+    });
     return true;
   }
 }
 
-module.exports = {DEFAULT_SETTINGS, FriendLinksService, OPTION_KEY, normalizeLink, normalizeSettings, safeUrl, sortLinks, state};
+module.exports = {DEFAULT_SETTINGS, FriendLinksService, LINK_PREFIX, OPTION_KEY, SETTINGS_KEY,
+  normalizeLink, normalizeSettings, safeUrl, sortLinks, state};

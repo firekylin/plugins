@@ -6,13 +6,20 @@ const {FriendLinksService, normalizeLink, normalizeSettings, sortLinks} = requir
 const {renderFriendLinksPage} = require('../lib/render');
 const plugin = require('../plugin');
 
-function fixture() {
-  let stored = '';
+function fixture(initial = {}) {
+  const options = new Map(Object.entries(initial));
   let nextId = 1;
-  const model = {where(value) { this.key = value.key; return this }, async find() { return stored ? {key: this.key, value: stored} : {} },
-    async updateOptions(key, value) { stored = value }};
+  const model = {
+    async getOptions() { return Object.fromEntries(options) },
+    where(value) { this.key = value.key; return this },
+    async delete() { return options.delete(this.key) ? 1 : 0 },
+    async updateOptions(key, value) {
+      const values = typeof key === 'object' ? key : {[key]: value};
+      Object.entries(values).forEach(([name, item]) => options.set(name, item));
+    }
+  };
   const service = new FriendLinksService({getModel: () => model, now: () => '2026-10-14 12:00:00', createId: () => `link-${nextId++}`});
-  return {service, value: () => JSON.parse(stored)};
+  return {service, options};
 }
 
 test('normalizes link fields, settings and ordering', () => {
@@ -26,11 +33,11 @@ test('normalizes link fields, settings and ordering', () => {
 });
 
 test('creates, edits, filters and removes friend links', async() => {
-  const {service, value} = fixture();
+  const {service, options} = fixture();
   const first = await service.save({name: 'A', url: 'https://a.example', category: 'Friends', order: 2});
   await service.save({name: 'B', url: 'https://b.example', category: 'Friends', order: 1, status: 'inactive'});
   assert.equal(first.id, 'link-1');
-  assert.equal(value().links.length, 2);
+  assert.equal([...options.keys()].filter(key => key.startsWith('plugin_friend_links_link_')).length, 2);
   assert.equal((await service.list({publicOnly: true})).total, 1);
   assert.equal((await service.list({category: 'Friends', keyword: 'a.example'})).items[0].name, 'A');
   const edited = await service.save({...first, name: 'A+'});
@@ -51,6 +58,25 @@ test('appends and moves links without manually entered sort values', async() => 
   assert.deepEqual((await service.list()).items.map(link => link.id), [second.id, first.id]);
   assert.equal(await service.move(second.id, 'up'), false);
   assert.equal((await service.get(first.id)).name, 'A');
+});
+
+test('migrates legacy storage without resurrecting deleted links', async() => {
+  const legacy = {settings: {enabled: true, pageSize: 25}, links: [
+    {id: 'old-1', name: 'Old', url: 'https://old.example', category: '默认分类', status: 'active', order: 0}
+  ]};
+  const {service, options} = fixture({plugin_friend_links: JSON.stringify(legacy)});
+  await service.remove('old-1');
+  assert.equal(options.has('plugin_friend_links'), false);
+  assert.equal((await service.list()).total, 0);
+});
+
+test('stores concurrent creates independently and supports complete admin listings', async() => {
+  const {service} = fixture();
+  await Promise.all(Array.from({length: 205}, (_, index) => service.save({
+    name: `Link ${index}`, url: `https://example.com/${index}`
+  })));
+  assert.equal((await service.list({pageSize: 200})).items.length, 200);
+  assert.equal((await service.list({all: true})).items.length, 205);
 });
 
 test('settings can disable all public results', async() => {

@@ -41,14 +41,14 @@ module.exports = {
     ctx.admin.registerPanel({id: 'friend-links', title: '友情链接', icon: 'contact', order: 76});
     ctx.admin.registerPage({id: 'manage', panel: 'friend-links', title: '链接管理', description: '新增、编辑、隐藏或删除友情链接。',
       load: async() => {
-        const result = await service.list({pageSize: 200});
+        const result = await service.list({all: true});
         const lastIndex = result.items.length - 1;
         return {sections: [
           {type: 'table', title: `全部链接（共 ${result.total} 个）`, rowKey: 'id', columns: [
             {key: 'id', title: 'ID'}, {key: 'name', title: '站点'}, {key: 'url', title: '地址'},
             {key: 'category', title: '分类'}, {key: 'statusLabel', title: '状态'},
             {key: 'operations', title: '操作', type: 'actions'}
-          ], toolbar: [{label: '新增链接', href: '/admin/plugins/friend-links/edit', type: 'primary'}],
+          ], pagination: true, toolbar: [{label: '新增链接', href: '/admin/plugins/friend-links/edit', type: 'primary'}],
           rows: result.items.map((link, index) => ({...link, statusLabel: link.status === 'active' ? '显示' : '隐藏', operations: [
             {label: '上移', action: 'move-link', input: {id: link.id, direction: 'up'}, disabled: index === 0},
             {label: '下移', action: 'move-link', input: {id: link.id, direction: 'down'}, disabled: index === lastIndex},
