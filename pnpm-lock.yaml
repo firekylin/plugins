@@ -24,6 +24,7 @@ importers:
         version: 7.2.4
 
   packages/friend-links: {}
+  packages/relate-post: {}
 
 packages:
 
