@@ -99,6 +99,19 @@ test('accepts LeanCloud JSON Lines exports', async() => {
   assert.equal(result.importable, 2);
 });
 
+test('retries comments without source timestamps without creating duplicates', async() => {
+  const db = database();
+  const data = JSON.stringify([{objectId: 'no-date', comment: 'No source date', url: '/post/hello.html'}]);
+  const first = new CommentImporter({getModel: db.getModel, now: () => '2024-01-01 00:00:00'});
+  const second = new CommentImporter({getModel: db.getModel, now: () => '2025-01-01 00:00:00'});
+  assert.equal((await first.run({source: 'waline', data, pageMap: '{}'})).imported, 1);
+  const retry = await second.run({source: 'waline', data, pageMap: '{}'});
+  assert.equal(retry.imported, 0);
+  assert.equal(retry.duplicates, 1);
+  assert.equal(db.tables.comment.length, 1);
+  assert.equal(db.tables.comment[0].inserted_at, '1970-01-01 00:00:00');
+});
+
 test('imports and matches Waline users, social identities and comment ownership', async() => {
   const db = database();
   db.tables.user.push({id: 20, name: 'existing', display_name: 'Existing', email: 'existing@example.test'});

@@ -125,7 +125,7 @@ class CommentImporter {
         inserted_at: item.insertedAt || item.createdAt || ''
       })}`;
       sourceIds.add(sourceId);
-      const inserted = datetime(item.insertedAt || item.createdAt, this.now);
+      const inserted = datetime(item.insertedAt || item.createdAt, () => '1970-01-01 00:00:00');
       rows.push({
         sourceId,
         sourceUserId: text(item.sourceUserId, 191),
