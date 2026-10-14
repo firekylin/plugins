@@ -176,8 +176,8 @@ class BackupService {
         query, type: this.database.type, prefix: this.database.prefix, now: this.now
       }).write(partial);
       const stats = typeof model.transaction === 'function' && typeof model.db === 'function'
-        ? await model.transaction(async connection => {
-          const query = sql => model.db().query({sql, debounce: false}, connection);
+        ? await model.transaction(async() => {
+          const query = sql => model.query(sql);
           if (this.database.type === 'postgresql') {
             await query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
           }
