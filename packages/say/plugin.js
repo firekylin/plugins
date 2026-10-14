@@ -32,7 +32,7 @@ const publishFields = [
   {name: 'cover', type: 'url', label: '封面 URL'}
 ];
 const textPublishFields = [
-  {name: 'status', type: 'select', label: '状态', required: true, options: statusOptions},
+  {name: 'status', type: 'radio', label: '状态', required: true, options: statusOptions},
   {name: 'text', type: 'code', label: '内容', required: true, description: '使用 #标签 可自动提取标签。'}
 ];
 
