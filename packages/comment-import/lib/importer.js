@@ -237,38 +237,54 @@ class CommentImporter {
     }
     if (result.dryRun) return {...result, importable: prepared.rows.length};
     const existing = await this.existingFingerprints();
-    const pending = [...prepared.rows];
+    const pending = new Map(prepared.rows.map(item => [item.sourceId, item]));
+    const dependencies = new Map();
+    const dependents = new Map();
+    for (const item of prepared.rows) {
+      const ids = new Set([item.parentId, item.rootId].filter(id => id && pending.has(id)));
+      dependencies.set(item.sourceId, ids.size);
+      for (const id of ids) {
+        if (!dependents.has(id)) dependents.set(id, []);
+        dependents.get(id).push(item.sourceId);
+      }
+    }
+    const ready = prepared.rows.filter(item => dependencies.get(item.sourceId) === 0);
+    let readyIndex = 0;
     const importedIds = new Map();
     const affectedPosts = new Set();
-    while (pending.length) {
-      let progress = false;
-      for (let index = pending.length - 1; index >= 0; index--) {
-        const item = pending[index];
-        const parent = item.parentId && importedIds.get(item.parentId);
-        const root = item.rootId && importedIds.get(item.rootId);
-        const blocked = [item.parentId, item.rootId].filter(Boolean)
-          .some(id => !importedIds.has(id) && pending.some(candidate => candidate.sourceId === id));
-        if (blocked) continue;
-        const row = {...item.data, pid: parent ? String(parent) : null, rid: root ? String(root) : null};
-        const key = fingerprint(row);
-        if (existing.has(key)) {
-          result.duplicates += 1;
-          importedIds.set(item.sourceId, existing.get(key));
-        } else {
-          if (item.unresolved || (item.parentId && !parent) || (item.rootId && !root)) {
-            result.unresolvedParents += 1;
-          }
-          const id = await this.getModel('comment').add(row);
-          importedIds.set(item.sourceId, id);
-          existing.set(key, id);
-          affectedPosts.add(row.post_id);
-          result.imported += 1;
+    while (pending.size) {
+      if (readyIndex >= ready.length) {
+        for (const item of pending.values()) {
+          item.parentId = '';
+          item.rootId = '';
+          item.unresolved = true;
+          ready.push(item);
         }
-        pending.splice(index, 1);
-        progress = true;
       }
-      if (!progress) {
-        pending.forEach(item => { item.parentId = ''; item.rootId = ''; item.unresolved = true });
+      const item = ready[readyIndex++];
+      if (!pending.delete(item.sourceId)) continue;
+      const parent = item.parentId && importedIds.get(item.parentId);
+      const root = item.rootId && importedIds.get(item.rootId);
+      const row = {...item.data, pid: parent ? String(parent) : null, rid: root ? String(root) : null};
+      const key = fingerprint(row);
+      if (existing.has(key)) {
+        result.duplicates += 1;
+        importedIds.set(item.sourceId, existing.get(key));
+        affectedPosts.add(row.post_id);
+      } else {
+        if (item.unresolved || (item.parentId && !parent) || (item.rootId && !root)) {
+          result.unresolvedParents += 1;
+        }
+        const id = await this.getModel('comment').add(row);
+        importedIds.set(item.sourceId, id);
+        existing.set(key, id);
+        affectedPosts.add(row.post_id);
+        result.imported += 1;
+      }
+      for (const dependentId of dependents.get(item.sourceId) || []) {
+        const remaining = dependencies.get(dependentId) - 1;
+        dependencies.set(dependentId, remaining);
+        if (remaining === 0 && pending.has(dependentId)) ready.push(pending.get(dependentId));
       }
     }
     for (const postId of affectedPosts) {

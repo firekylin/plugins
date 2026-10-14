@@ -65,9 +65,12 @@ test('imports comments, relationships and counts, then skips duplicates', async(
   assert.equal(db.tables.comment[1].rid, String(db.tables.comment[0].id));
   assert.equal(db.tables.post[0].comment_num, 1);
 
+  db.tables.post[0].comment_num = 0;
   const second = await importer.run({source: 'waline', data: exportData(), pageMap: '{}', defaultStatus: 'approved'});
   assert.equal(second.imported, 0);
   assert.equal(second.duplicates, 2);
+  assert.equal(second.affectedPosts, 1);
+  assert.equal(db.tables.post[0].comment_num, 1);
   assert.equal(db.tables.comment.length, 2);
 });
 

@@ -1,0 +1,25 @@
+{
+  "name": "@firekylin/plugin-backup",
+  "version": "1.0.0",
+  "description": "Manual and scheduled SQL backups for Firekylin",
+  "main": "plugin.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.10.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "croner": "^10.0.1",
+    "nodemailer": "^7.0.10"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "backup",
+    "entry": "plugin.js",
+    "permissions": ["database:read", "filesystem:write", "email:send"]
+  },
+  "files": ["lib", "plugin.js", "README.md"]
+}
