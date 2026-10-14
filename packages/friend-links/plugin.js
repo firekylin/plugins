@@ -40,7 +40,7 @@ module.exports = {
       request.body = renderFriendLinksPage(result.items, {title: options.title ? `${options.title} · 友情链接` : '友情链接'});
     }});
 
-    ctx.admin.registerPanel({id: 'friend-links', title: '友情链接', icon: 'link', order: 76});
+    ctx.admin.registerPanel({id: 'friend-links', title: '友情链接', icon: 'contact', order: 76});
     ctx.admin.registerPage({id: 'manage', panel: 'friend-links', title: '链接管理', description: '新增、编辑、隐藏或删除友情链接。',
       load: async() => {
         const result = await service.list({pageSize: 200});
@@ -50,16 +50,14 @@ module.exports = {
             {key: 'id', title: 'ID'}, {key: 'name', title: '站点'}, {key: 'url', title: '地址'},
             {key: 'category', title: '分类'}, {key: 'statusLabel', title: '状态'}, {key: 'order', title: '排序'}
           ], rows: result.items.map(link => ({...link, statusLabel: link.status === 'active' ? '显示' : '隐藏'}))},
-          {type: 'form', id: 'delete-link'}
+          {type: 'form', id: 'delete-link'},
+          {type: 'divider', title: '公开设置'},
+          {type: 'form', id: 'link-settings'},
+          {type: 'markdown', title: '主题集成', content:
+            '公开页面：`/links`；JSON API：`/api/plugins/friend-links/list`。\n\n' +
+            '主题可调用 `friendLinks.list({ category: "分类名" })`，或使用 `Widget_Plugin_Friend_Links`。'}
         ]};
       }});
-    ctx.admin.registerPage({id: 'settings', panel: 'friend-links', title: '链接设置', description: '配置公开页面和列表接口。',
-      load: async() => ({sections: [
-        {type: 'form', id: 'link-settings'},
-        {type: 'markdown', title: '主题集成', content:
-          '公开页面：`/links`；JSON API：`/api/plugins/friend-links/list`。\n\n' +
-          '主题可调用 `friendLinks.list({ category: "分类名" })`，或使用 `Widget_Plugin_Friend_Links`。'}
-      ]})});
     ctx.admin.registerForm({id: 'save-link', page: 'manage', title: '新增或编辑链接', submitLabel: '保存链接', fields: linkFields,
       load: async() => emptyLink(), submit: async values => {
         const link = await service.save(values);
@@ -71,7 +69,7 @@ module.exports = {
       await service.remove(values.id);
       return {message: '友情链接已删除。'};
     }});
-    ctx.admin.registerForm({id: 'link-settings', page: 'settings', title: '公开设置', submitLabel: '保存设置', fields: [
+    ctx.admin.registerForm({id: 'link-settings', page: 'manage', title: '公开设置', submitLabel: '保存设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开页面和列表接口'},
       {name: 'pageSize', type: 'number', label: '默认每页数量', required: true}
     ], load: async() => service.settings(), submit: async values => {

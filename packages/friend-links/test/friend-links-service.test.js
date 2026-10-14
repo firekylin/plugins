@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {FriendLinksService, normalizeLink, normalizeSettings, sortLinks} = require('../lib/friend-links-service');
 const {renderFriendLinksPage} = require('../lib/render');
+const plugin = require('../plugin');
 
 function fixture() {
   let stored = '';
@@ -55,4 +56,24 @@ test('standalone page escapes user-controlled content and protects outbound link
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /rel="noopener noreferrer"/);
   assert.match(html, /x=1&amp;y=2/);
+});
+
+test('registers a supported sidebar icon and a directly routable single page', () => {
+  const panels = [];
+  const pages = [];
+  const forms = [];
+  class Widget {}
+  plugin.register({
+    widgets: {Widget, register() {}},
+    templates: {registerFunction() {}},
+    routes: {register() {}},
+    admin: {
+      registerPanel(value) { panels.push(value) },
+      registerPage(value) { pages.push(value) },
+      registerForm(value) { forms.push(value) }
+    }
+  });
+  assert.equal(panels[0].icon, 'contact');
+  assert.deepEqual(pages.map(page => page.id), ['manage']);
+  assert.equal(forms.every(form => form.page === 'manage'), true);
 });
