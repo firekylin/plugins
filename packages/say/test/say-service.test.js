@@ -101,7 +101,7 @@ test('updates status, deletes records and retains unrelated post types', async()
   assert.equal(rows.some(row => row.id === 99), true);
 });
 
-test('implements the reference plugin merge rules', async() => {
+test('merges compatible say types', async() => {
   const merged = mergeData([
     {kind: 'text', text: 'caption', status: 'public', tags: ['one']},
     {kind: 'image', images: ['https://example.test/a.jpg'], status: 'public', tags: ['two']}

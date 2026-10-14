@@ -1,6 +1,6 @@
 # Firekylin Say
 
-一个适用于 Firekylin 的轻量微博/碎语插件，参考 Typecho Say 1.1.0 的内容模型重新实现。
+一个适用于 Firekylin 的轻量微博/碎语插件。
 
 ## 功能
 
@@ -34,7 +34,3 @@ curl -X POST https://example.com/api/plugins/say/publish \
 ```
 
 图片和语音使用已经托管的 HTTPS URL。插件不会代表调用者下载远程文件，避免 SSRF、证书绕过和第三方存储凭据风险。
-
-## 与 Typecho Say 的差异
-
-原插件还包含企业微信加密回调、又拍云异步转存和 TinyPNG 压缩。这些能力依赖外部账号和旧式媒体管线，本插件首版不直接复制；可通过外部发布 API 接入企业微信机器人或自动化服务。原插件的开放 CORS 和关闭 TLS 校验行为也没有保留。
