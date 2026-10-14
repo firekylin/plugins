@@ -31,6 +31,10 @@ const publishFields = [
   {name: 'artist', type: 'text', label: '音乐作者'},
   {name: 'cover', type: 'url', label: '封面 URL'}
 ];
+const textPublishFields = [
+  {name: 'status', type: 'select', label: '状态', required: true, options: statusOptions},
+  {name: 'text', type: 'code', label: '内容', required: true, description: '使用 #标签 可自动提取标签。'}
+];
 
 function defaultPublish() {
   return {kind: 'text', status: 'public', text: '', tags: '', images: '', mediaUrl: '', latitude: '',
@@ -192,7 +196,7 @@ module.exports = {
         ]};
       }
     });
-    ctx.admin.registerPage({id: 'publish', panel: 'say', title: '发布碎语', description: '发布文本、图片、语音、位置、链接或音乐。',
+    ctx.admin.registerPage({id: 'publish', panel: 'say', title: '发布碎语', description: '发布一条纯文本碎语。',
       load: async() => ({sections: [{type: 'form', id: 'publish-say'}]})});
     ctx.admin.registerPage({id: 'edit', panel: 'say', title: '编辑碎语', description: '修改单条碎语的内容与状态。',
       load: async() => ({sections: [{type: 'form', id: 'edit-say'}]})});
@@ -207,9 +211,9 @@ module.exports = {
       ]})
     });
 
-    ctx.admin.registerForm({id: 'publish-say', page: 'publish', title: '碎语内容', submitLabel: '发布', fields: publishFields,
-      load: async() => defaultPublish(), submit: async(values, context) => {
-        const item = await service.create(await enrich(values), context.user.id);
+    ctx.admin.registerForm({id: 'publish-say', page: 'publish', title: '碎语内容', submitLabel: '发布', fields: textPublishFields,
+      load: async() => ({status: 'public', text: ''}), submit: async(values, context) => {
+        const item = await service.create({...values, kind: 'text'}, context.user.id);
         return {message: `碎语 #${item.id} 已发布。`, item};
       }});
     ctx.admin.registerForm({id: 'manage-says', page: 'manage', title: '批量管理', submitLabel: '执行', fields: [
