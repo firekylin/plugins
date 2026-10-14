@@ -137,7 +137,6 @@ class RelatedPostService {
     if (scores.size) {
       const candidateIds = [...scores.entries()]
         .sort((left, right) => right[1] - left[1])
-        .slice(0, 500)
         .map(([id]) => id);
       posts = await this.publicPosts({id: ['IN', candidateIds]}, candidateIds.length);
       posts.sort((left, right) =>

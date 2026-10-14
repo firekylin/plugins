@@ -86,6 +86,29 @@ test('ranks matching public posts and hides protected content', async() => {
   assert.deepEqual(posts.map(post => post.id), [2, 3]);
 });
 
+test('uses publication time to rank all candidates with the same score', async() => {
+  const candidateIds = Array.from({length: 501}, (_, index) => index + 2);
+  const service = serviceFor({
+    post_tag: [
+      {post_id: 1, tag_id: 10},
+      ...candidateIds.map(postId => ({post_id: postId, tag_id: 10}))
+    ],
+    post: candidateIds.map(postId => ({
+      id: postId,
+      title: `Post ${postId}`,
+      pathname: `post-${postId}`,
+      type: 0,
+      status: 3,
+      is_public: 1,
+      create_time: postId === 502 ? '2026-10-01 00:00:00' : '2026-01-01 00:00:00',
+      options: '{}'
+    }))
+  });
+
+  const posts = await service.find({id: 1, tag: [{id: 10}], cate: []}, {limit: 1});
+  assert.deepEqual(posts.map(post => post.id), [502]);
+});
+
 test('falls back to recent posts when no taxonomy matches', async() => {
   const service = serviceFor({
     post_tag: [],
