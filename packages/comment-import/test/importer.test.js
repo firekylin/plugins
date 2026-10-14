@@ -19,7 +19,9 @@ function database() {
   const tables = {
     post: [{id: 10, type: 0, pathname: 'hello', comment_num: 0},
       {id: 11, type: 1, pathname: 'about', comment_num: 0}],
-    comment: []
+    comment: [],
+    user: [],
+    user_social: []
   };
   let nextId = 1;
   class Query {
@@ -56,7 +58,8 @@ test('imports comments, relationships and counts, then skips duplicates', async(
   const importer = new CommentImporter({getModel: db.getModel, now: () => '2024-02-01 00:00:00'});
   const first = await importer.run({source: 'waline', data: exportData(), pageMap: '{}', defaultStatus: 'approved'});
   assert.deepEqual(first, {source: 'waline', parsed: 3, imported: 2, duplicates: 0,
-    skipped: {invalid: 0, deleted: 0, unmatched: 1}, unresolvedParents: 0, affectedPosts: 1, dryRun: false});
+    skipped: {invalid: 0, deleted: 0, unmatched: 1}, unresolvedParents: 0, affectedPosts: 1, dryRun: false,
+    users: {created: 0, matched: 0, skipped: 0, socialLinked: 0, socialConflicts: 0}});
   assert.equal(db.tables.comment.length, 2);
   assert.equal(db.tables.comment[1].pid, String(db.tables.comment[0].id));
   assert.equal(db.tables.comment[1].rid, String(db.tables.comment[0].id));
@@ -91,6 +94,35 @@ test('accepts LeanCloud JSON Lines exports', async() => {
     defaultStatus: 'approved', dryRun: true});
   assert.equal(result.parsed, 2);
   assert.equal(result.importable, 2);
+});
+
+test('imports and matches Waline users, social identities and comment ownership', async() => {
+  const db = database();
+  db.tables.user.push({id: 20, name: 'existing', display_name: 'Existing', email: 'existing@example.test'});
+  db.tables.user_social.push({id: 1, user_id: 20, provider: 'github', account_id: 'existing-gh'});
+  const importer = new CommentImporter({getModel: db.getModel, now: () => '2024-02-01 00:00:00'});
+  const result = await importer.run({source: 'waline', pageMap: '{}', defaultStatus: 'approved', data: JSON.stringify({
+    type: 'waline', data: {
+      Users: [
+        {objectId: 'wu1', email: ' Existing@Example.Test ', display_name: 'Existing Waline', github: 'existing-gh'},
+        {objectId: 'wu2', email: 'new@example.test', display_name: 'New User', url: 'https://example.test',
+          avatar: 'https://example.test/avatar.png', github: 'new-gh', gitlab: 42, password: 'do-not-copy', '2fa': 'secret'}
+      ],
+      Comment: [
+        {objectId: 'wc1', user_id: 'wu1', comment: 'Existing user', url: '/post/hello.html'},
+        {objectId: 'wc2', user_id: 'wu2', comment: 'New user', url: '/post/hello.html'}
+      ]
+    }
+  })});
+  assert.deepEqual(result.users, {created: 1, matched: 1, skipped: 0, socialLinked: 2, socialConflicts: 0});
+  const created = db.tables.user.find(user => user.email === 'new@example.test');
+  assert.equal(created.type, 4);
+  assert.equal(created.password, '');
+  assert.equal(created.comment_2fa, null);
+  assert.equal(db.tables.comment.find(comment => comment.comment === 'Existing user').user_id, 20);
+  assert.equal(db.tables.comment.find(comment => comment.comment === 'New user').user_id, created.id);
+  assert.deepEqual(db.tables.user_social.filter(row => row.user_id === created.id)
+    .map(row => [row.provider, row.account_id]).sort(), [['github', 'new-gh'], ['gitlab', '42']]);
 });
 
 test('imports cyclic replies as top-level comments instead of hanging', async() => {

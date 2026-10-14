@@ -20,7 +20,8 @@
     "entry": "plugin.js",
     "permissions": [
       "comments:write",
-      "content:read"
+      "content:read",
+      "users:write"
     ]
   },
   "files": [

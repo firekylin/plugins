@@ -25,6 +25,8 @@ Regular JSON and LeanCloud JSON Lines exports are accepted. Twikoo HTML comments
 
 The importer preserves comment text, author metadata, timestamps, moderation state, likes, and reply relationships where the source export provides them. It recalculates `comment_num` for affected posts and skips existing comments using a content fingerprint, so the same export can be retried safely.
 
+For a Waline database backup, registered users in `data.Users` are imported as Firekylin commenters. Existing users are matched by normalized email; otherwise a new active commenter is created and comments carrying the corresponding Waline `user_id` are linked to it. Dynamic Waline OAuth provider IDs are copied to Firekylin's social account table. Existing social links are never overwritten: conflicts are reported. Password hashes, session tokens, and two-factor secrets are not copied because they are not portable between the systems.
+
 ## Page matching
 
 Waline, Valine, Artalk, Twikoo, and Commento normally contain a page path. A path already shaped like `/post/slug.html` or `/page/slug.html` is matched automatically. Full URLs with one of those paths are also accepted.

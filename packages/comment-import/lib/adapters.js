@@ -52,6 +52,7 @@ function author(item) {
 function common(item, overrides = {}) {
   return {
     sourceId: identifier(item),
+    sourceUserId: String(value(item.user_id, item.userId) || ''),
     parentId: reference(value(item.pid, item.parentId, item.parent_id, item.parentHex, item.reply_to, item.rid)),
     rootId: reference(value(item.rootId, item.root_id)),
     url: String(value(item.url, item.path, item.page_key, item.pageKey, item.relative_url, item.pathname) || ''),
@@ -80,7 +81,33 @@ function arrayAt(input, names) {
 }
 
 function walineLike(input) {
-  return arrayAt(input, ['comments', 'results', 'data', 'objects']).map(item => common(item));
+  const official = input && input.data && input.data.Comment;
+  return arrayAt(official || input, ['Comment', 'comments', 'results', 'data', 'objects'])
+    .map(item => common(item));
+}
+
+const WALINE_USER_FIELDS = new Set([
+  'objectId', '_id', 'id', 'email', 'mail', 'display_name', 'displayName', 'name', 'nick', 'url', 'link',
+  'avatar', 'password', 'type', 'status', 'label', '2fa', 'createdAt', 'created_at', 'updatedAt',
+  'updated_at', 'insertedAt', 'ACL', 'sessionToken', 'authData'
+]);
+
+function walineUsers(input) {
+  const official = input && input.data && input.data.Users;
+  return arrayAt(official || (input && input.Users), ['Users', 'users', 'results', 'data', 'objects'])
+    .map(item => ({
+      sourceId: identifier(item),
+      email: String(value(item.email, item.mail) || '').trim().toLowerCase(),
+      displayName: String(value(item.display_name, item.displayName, item.name, item.nick) || 'Commenter'),
+      url: String(value(item.url, item.link) || ''),
+      avatar: String(value(item.avatar) || ''),
+      label: String(value(item.label) || ''),
+      createdAt: date(value(item.createdAt, item.created_at)),
+      socials: Object.entries(item).filter(([provider, accountId]) =>
+        !WALINE_USER_FIELDS.has(provider) && /^[a-z][a-z0-9_-]{0,31}$/i.test(provider) &&
+        ['string', 'number'].includes(typeof accountId) && String(accountId).trim()
+      ).map(([provider, accountId]) => ({provider, accountId: String(accountId).trim()}))
+    }));
 }
 
 function artalk(input) {
@@ -168,4 +195,8 @@ function parse(source, input) {
   return commento(input);
 }
 
-module.exports = {SUPPORTED_SOURCES, parse};
+function parseUsers(source, input) {
+  return source === 'waline' ? walineUsers(input) : [];
+}
+
+module.exports = {SUPPORTED_SOURCES, parse, parseUsers};

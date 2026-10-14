@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const {parse, SUPPORTED_SOURCES} = require('./adapters');
+const {parse, parseUsers, SUPPORTED_SOURCES} = require('./adapters');
 
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const MAX_COMMENTS = 50000;
@@ -101,7 +101,9 @@ class CommentImporter {
 
   prepare({source, data, pageMap = {}, defaultStatus = 'approved'}, posts) {
     if (!SUPPORTED_SOURCES.has(source)) throw new Error(`Unsupported comment source: ${source}`);
-    const parsed = parse(source, parseJson(data, 'Comment data', [], true));
+    const input = parseJson(data, 'Comment data', [], true);
+    const parsed = parse(source, input);
+    const users = parseUsers(source, input);
     const mappings = parseJson(pageMap, 'Page map', {});
     if (!mappings || typeof mappings !== 'object' || Array.isArray(mappings)) throw new Error('Page map must be an object');
     if (parsed.length > MAX_COMMENTS) throw new Error(`A single import is limited to ${MAX_COMMENTS} comments`);
@@ -126,6 +128,7 @@ class CommentImporter {
       const inserted = datetime(item.insertedAt || item.createdAt, this.now);
       rows.push({
         sourceId,
+        sourceUserId: text(item.sourceUserId, 191),
         parentId: text(item.parentId, 191),
         rootId: text(item.rootId, 191),
         data: {
@@ -156,7 +159,66 @@ class CommentImporter {
       if (visited.has(ancestorId) && rowsBySourceId.get(ancestorId)?.parentId) cyclic = true;
       if (!cyclic) row.rootId = ancestorId;
     }
-    return {rows, parsed: parsed.length, skipped};
+    return {rows, users, parsed: parsed.length, skipped};
+  }
+
+  async importWalineUsers(profiles, dryRun) {
+    const result = {created: 0, matched: 0, skipped: 0, socialLinked: 0, socialConflicts: 0};
+    const sourceIds = new Map();
+    if (!profiles.length) return {result, sourceIds};
+    const userModel = this.getModel('user');
+    const socialModel = this.getModel('user_social');
+    const existingUsers = await userModel.field('id,name,email').select();
+    const existingSocials = await socialModel.field('user_id,provider,account_id').select();
+    const usersByEmail = new Map(existingUsers.filter(user => user.email)
+      .map(user => [String(user.email).trim().toLowerCase(), user]));
+    const names = new Set(existingUsers.map(user => String(user.name).toLowerCase()));
+    const socialByAccount = new Map(existingSocials.map(row => [`${row.provider}\0${row.account_id}`, row]));
+    const socialByUser = new Map(existingSocials.map(row => [`${row.user_id}\0${row.provider}`, row]));
+    let virtualId = -1;
+    for (const profile of profiles) {
+      if (!profile.sourceId || !profile.email) { result.skipped += 1; continue }
+      let user = usersByEmail.get(profile.email);
+      if (user) {
+        result.matched += 1;
+      } else {
+        const local = profile.email.split('@')[0].replace(/[^a-z0-9_-]/ig, '').slice(0, 30) || 'commenter';
+        let name = local; let suffix = 0;
+        while (names.has(name.toLowerCase())) name = `${local.slice(0, 27)}-${++suffix}`;
+        names.add(name.toLowerCase());
+        const createdAt = datetime(profile.createdAt, this.now);
+        const data = {
+          name, display_name: text(profile.displayName, 255) || name, email: text(profile.email, 255),
+          password: '', type: 4, status: 1, create_time: createdAt, last_login_time: createdAt,
+          create_ip: '', last_login_ip: '', url: text(profile.url, 512) || null,
+          avatar: text(profile.avatar, 2048) || null, comment_label: text(profile.label, 255) || null,
+          comment_2fa: null
+        };
+        const id = dryRun ? virtualId-- : await userModel.add(data);
+        user = {...data, id};
+        usersByEmail.set(profile.email, user);
+        result.created += 1;
+      }
+      sourceIds.set(profile.sourceId, Number(user.id));
+      for (const social of profile.socials) {
+        const accountKey = `${social.provider}\0${social.accountId}`;
+        const userKey = `${user.id}\0${social.provider}`;
+        const accountLink = socialByAccount.get(accountKey);
+        const userLink = socialByUser.get(userKey);
+        if (accountLink || userLink) {
+          if (!accountLink || Number(accountLink.user_id) !== Number(user.id) ||
+              (userLink && String(userLink.account_id) !== social.accountId)) result.socialConflicts += 1;
+          continue;
+        }
+        const link = {user_id: Number(user.id), provider: social.provider,
+          account_id: social.accountId, created_at: this.now()};
+        if (!dryRun) await socialModel.add(link);
+        socialByAccount.set(accountKey, link);
+        socialByUser.set(userKey, link);
+        result.socialLinked += 1;
+      }
+    }
+    return {result, sourceIds};
   }
 
   async run(options) {
@@ -165,8 +227,14 @@ class CommentImporter {
     const result = {
       source: options.source, parsed: prepared.parsed, imported: 0, duplicates: 0,
       skipped: prepared.skipped, unresolvedParents: 0, affectedPosts: 0,
-      dryRun: options.dryRun === true
+      dryRun: options.dryRun === true,
+      users: {created: 0, matched: 0, skipped: 0, socialLinked: 0, socialConflicts: 0}
     };
+    if (options.source === 'waline') {
+      const users = await this.importWalineUsers(prepared.users, result.dryRun);
+      result.users = users.result;
+      prepared.rows.forEach(row => { row.data.user_id = users.sourceIds.get(row.sourceUserId) || null });
+    }
     if (result.dryRun) return {...result, importable: prepared.rows.length};
     const existing = await this.existingFingerprints();
     const pending = [...prepared.rows];

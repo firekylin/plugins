@@ -8,12 +8,16 @@ const sourceOptions = [
 ].map(([label, value]) => ({label, value}));
 
 function message(result) {
+  const users = result.source === 'waline'
+    ? ` Waline users: ${result.users.created} created, ${result.users.matched} matched, ` +
+      `${result.users.socialLinked} social identities linked, ${result.users.socialConflicts} conflicts.`
+    : '';
   if (result.dryRun) {
     return `Preview complete: ${result.importable} importable, ${result.skipped.unmatched} unmatched, ` +
-      `${result.skipped.invalid + result.skipped.deleted} invalid or deleted.`;
+      `${result.skipped.invalid + result.skipped.deleted} invalid or deleted.${users}`;
   }
   return `Imported ${result.imported} comments into ${result.affectedPosts} posts; ` +
-    `skipped ${result.duplicates} duplicates and ${result.skipped.unmatched} unmatched comments.`;
+    `skipped ${result.duplicates} duplicates and ${result.skipped.unmatched} unmatched comments.${users}`;
 }
 
 module.exports = {
@@ -32,7 +36,7 @@ module.exports = {
         sections: [
           {type: 'markdown', content:
             '粘贴来源系统导出的 JSON。插件会保留回复、审核状态、时间和点赞数，并跳过重复记录。' +
-            'Gitalk/Giscus 或路径与 Firekylin 不同的数据需要填写页面映射，格式见插件 README。'},
+            'Waline 官方备份中的注册用户及社交登录也会迁移。Gitalk/Giscus 或路径与 Firekylin 不同的数据需要填写页面映射，格式见插件 README。'},
           {type: 'form', id: 'import-comments'}
         ]
       })

@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const {parse} = require('../lib/adapters');
+const {parse, parseUsers} = require('../lib/adapters');
 
 const cases = {
   waline: {results: [{objectId: 'w1', comment: 'Waline', url: '/post/hello.html', nick: 'W'}]},
@@ -54,4 +54,14 @@ test('maps source-specific status, identity and content fields', () => {
 
 test('rejects unknown source formats', () => {
   assert.throws(() => parse('unknown', []), /Unsupported/);
+});
+
+test('normalizes users from an official Waline database backup', () => {
+  const input = {data: {Users: [{objectId: 'u1', email: ' User@Example.Test ', display_name: 'User',
+    github: 'octocat', password: 'hash', '2fa': 'secret'}], Comment: []}};
+  assert.deepEqual(parseUsers('waline', input), [{
+    sourceId: 'u1', email: 'user@example.test', displayName: 'User', url: '', avatar: '', label: '',
+    createdAt: undefined, socials: [{provider: 'github', accountId: 'octocat'}]
+  }]);
+  assert.deepEqual(parseUsers('valine', input), []);
 });
