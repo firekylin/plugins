@@ -213,11 +213,21 @@ module.exports = {
     ctx.admin.registerPage({
       id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表、外部发布和企业微信回调。',
       load: async() => ({sections: [
-        {type: 'form', id: 'say-settings'},
-        {type: 'markdown', title: '使用方式', content:
-          '公开页面：`/says`；标签页面：`/says/tag/标签`；JSON API：`/api/plugins/say/list`。主题可调用 `say.list` 或 `Widget_Plugin_Say`。\n\n' +
-          '外部发布：向 `/api/plugins/say/publish` 发送 JSON，并通过 `X-Say-API-Key` 请求头传递密钥。可传 `imageBase64`、`imagesBase64` 或 `mediaBase64`，文件会交给 Firekylin 已配置的上传服务。\n\n' +
-          '企业微信回调地址：`/api/plugins/say/wecom`。'}
+        {type: 'form', id: 'say-basic-settings'},
+        {type: 'divider', title: '发布设置'},
+        {type: 'tabs', items: [
+          {key: 'external', label: '外部发布', sections: [
+            {type: 'form', id: 'say-external-settings'},
+            {type: 'markdown', title: '外部发布接口', content:
+              '向 `/api/plugins/say/publish` 发送 JSON，并通过 `X-Say-API-Key` 请求头传递密钥。可传 `imageBase64`、`imagesBase64` 或 `mediaBase64`，文件会交给 Firekylin 已配置的上传服务。'}
+          ]},
+          {key: 'wecom', label: '企业微信发布', sections: [
+            {type: 'form', id: 'say-wecom-settings'},
+            {type: 'markdown', title: '回调地址', content: '`/api/plugins/say/wecom`'}
+          ]}
+        ]},
+        {type: 'markdown', title: '公开访问', content:
+          '公开页面：`/says`；标签页面：`/says/tag/标签`；JSON API：`/api/plugins/say/list`。主题可调用 `say.list` 或 `Widget_Plugin_Say`。'}
       ]})
     });
 
@@ -248,18 +258,29 @@ module.exports = {
     ctx.admin.registerAction({id: 'delete-says', page: 'manage', label: '删除', type: 'danger',
       confirm: '确定删除选中的碎语吗？', handler: async input =>
         ({message: `已删除 ${await service.remove(input.ids)} 条碎语。`})});
-    ctx.admin.registerForm({id: 'say-settings', page: 'settings', title: '基础设置', submitLabel: '保存设置', fields: [
+    ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '基础设置', submitLabel: '保存基础设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和外部发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
-      {name: 'authorId', type: 'number', label: '外部发布作者 ID', required: true},
-      {name: 'apiKey', type: 'password', label: '外部发布 API Key', description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'},
-      {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'},
+      {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'}
+    ], load: async() => service.settings(), submit: async values => {
+      await service.saveSettings(values); return {message: '基础设置已保存。'};
+    }});
+    ctx.admin.registerForm({id: 'say-external-settings', page: 'settings', title: '外部发布',
+      submitLabel: '保存外部发布设置', fields: [
+        {name: 'authorId', type: 'number', label: '外部发布作者 ID', required: true},
+        {name: 'apiKey', type: 'password', label: '外部发布 API Key',
+          description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'}
+      ], load: async() => service.settings(), submit: async values => {
+        await service.saveSettings(values); return {message: '外部发布设置已保存。'};
+      }});
+    ctx.admin.registerForm({id: 'say-wecom-settings', page: 'settings', title: '企业微信发布',
+      submitLabel: '保存企业微信设置', fields: [
       {name: 'wecomCorpId', type: 'text', label: '企业微信 CorpID'},
       {name: 'wecomCorpSecret', type: 'password', label: '企业微信 CorpSecret', description: '用于下载图片和语音；留空会保留原值。'},
       {name: 'wecomToken', type: 'password', label: '企业微信回调 Token', description: '留空会保留原值。'},
       {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'}
     ], load: async() => service.settings(), submit: async values => {
-      await service.saveSettings(values); return {message: '碎语设置已保存。'};
+      await service.saveSettings(values); return {message: '企业微信设置已保存。'};
     }});
   }
 };

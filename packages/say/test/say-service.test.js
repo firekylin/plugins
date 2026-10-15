@@ -81,6 +81,7 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
     {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: ''});
+  assert.equal(normalizeSettings({authorId: 2}, {enabled: false}).enabled, false);
   assert.throws(() => normalizeSettings({apiKey: 'short'}), /at least 16/);
   assert.throws(() => normalizeSettings({wecomEncodingAESKey: 'short'}), /43 characters/);
 });

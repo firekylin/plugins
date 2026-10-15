@@ -39,7 +39,7 @@ function normalizeSettings(value = {}, previous = {}) {
     throw Object.assign(new Error('WeCom EncodingAESKey must be 43 characters'), {status: 400});
   }
   return {
-    enabled: value.enabled !== false,
+    enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,
     authorId: integer(value.authorId, prior.authorId, 1, Number.MAX_SAFE_INTEGER),
