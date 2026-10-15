@@ -177,6 +177,7 @@ module.exports = {
       load: async() => {
         const items = await service.all();
         return {sections: [
+          {type: 'actions', ids: []},
           {type: 'table', title: `碎语列表（共 ${items.length} 条）`, rowKey: 'id', pagination: true,
             search: {keys: ['content', 'tags'], placeholder: '搜索碎语'},
             selection: {input: 'ids', actions: [
@@ -203,9 +204,11 @@ module.exports = {
         ]};
       }
     });
-    ctx.admin.registerPage({id: 'publish', panel: 'say', title: '发布碎语', description: '发布一条纯文本碎语。',
+    ctx.admin.registerPage({id: 'publish', panel: 'say', title: '发布碎语', menu: false,
+      description: '发布一条纯文本碎语。',
       load: async() => ({sections: [{type: 'form', id: 'publish-say'}]})});
-    ctx.admin.registerPage({id: 'edit', panel: 'say', title: '编辑碎语', description: '修改单条碎语的内容与状态。',
+    ctx.admin.registerPage({id: 'edit', panel: 'say', title: '编辑碎语', menu: false,
+      description: '修改单条碎语的内容与状态。',
       load: async() => ({sections: [{type: 'form', id: 'edit-say'}]})});
     ctx.admin.registerPage({
       id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表、外部发布和企业微信回调。',
