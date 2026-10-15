@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {"type":"plugin","name":"firekylin-plugin-backup","version":"1.0.0","title":"Backup","description":"Create manual or scheduled SQL backups.","permissions":["database:read","settings:write","filesystem:write","mail:send"],"engines":{"firekylin":">=2.10.0","node":">=22.13.0"}},
+    {"type":"plugin","name":"firekylin-plugin-comment-import","version":"1.0.0","title":"Comment Import","description":"Import comments from supported third-party systems.","permissions":["comments:write","users:write","content:read"],"engines":{"firekylin":">=2.10.0","node":">=22.13.0"}},
+    {"type":"plugin","name":"firekylin-plugin-friend-links","version":"1.0.0","title":"Friend Links","description":"Manage categorized friend links.","permissions":["settings:write"],"engines":{"firekylin":">=2.10.0","node":">=22.13.0"}},
+    {"type":"plugin","name":"firekylin-plugin-relate-post","version":"1.0.0","title":"Related Posts","description":"Recommend related public posts by tags and categories.","permissions":["content:read","settings:write"],"engines":{"firekylin":">=2.10.0","node":">=22.13.0"}}
+  ]
+}

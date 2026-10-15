@@ -15,6 +15,7 @@ packages through `pnpm-workspace.yaml`.
   Artalk, Twikoo, Gitalk, Giscus, and Commento.
 - [`firekylin-plugin-friend-links`](packages/friend-links): manage categorized friend links and expose
   them through a standalone page, JSON API, template function, and theme widget.
+- [`@firekylin/plugin-marketplace`](packages/marketplace): browse and manage trusted Firekylin plugins and themes.
 - [`@firekylin/plugin-relate-post`](packages/relate-post): recommend related public posts using shared tags and categories.
 
 ## Publishing
