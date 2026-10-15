@@ -71,6 +71,14 @@ module.exports = {
         const compatibility = ctx.packages.check({...available, firekylin: {type: available.type},
           engines: available.engines || {}});
         if (!compatibility.compatible) throw new Error(`版本不兼容：${compatibility.reasons.join(', ')}`);
+        if (ctx.packages.mutationMode === 'deployment') {
+          const change = available.type === 'plugin'
+            ? {operation: 'plugin.install', name: available.name, version: available.version}
+            : {operation: 'theme.install', id: available.id || available.name, version: available.version,
+              download: available.download, integrity: available.integrity};
+          await ctx.packages.deploy(change);
+          return {message: '已提交仓库变更请求；合并生成的 PR 后将自动部署'};
+        }
         const result = available.type === 'plugin'
           ? await ctx.packages.installPlugin(available.name, available.version)
           : await ctx.packages.installTheme(await new Registry({url: (await settings()).registryUrl})
@@ -81,6 +89,10 @@ module.exports = {
     ctx.admin.registerAction({
       id: 'marketplace-uninstall', page: 'installed', label: '卸载', type: 'danger', confirm: '确认卸载该插件？',
       handler: async input => {
+        if (ctx.packages.mutationMode === 'deployment') {
+          await ctx.packages.deploy({operation: 'plugin.uninstall', name: input.name});
+          return {message: '已提交仓库变更请求；合并生成的 PR 后将自动部署'};
+        }
         await ctx.packages.uninstallPlugin(input.name);
         return {message: '卸载完成，请重启 Firekylin'};
       }
