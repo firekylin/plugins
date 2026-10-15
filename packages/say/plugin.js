@@ -175,14 +175,22 @@ module.exports = {
     ctx.admin.registerPage({
       id: 'manage', panel: 'say', title: '碎语管理', description: '发布和管理轻量微博内容。',
       load: async() => {
-        const result = await service.list({pageSize: 100});
+        const items = await service.all();
         return {sections: [
-          {type: 'table', title: `最近的碎语（共 ${result.total} 条）`, rowKey: 'id', pagination: true,
+          {type: 'table', title: `碎语列表（共 ${items.length} 条）`, rowKey: 'id', pagination: true,
+            search: {keys: ['content', 'tags'], placeholder: '搜索碎语'},
+            selection: {input: 'ids', actions: [
+              {key: 'public', label: '标记为公开', action: 'bulk-status', input: {status: 'public'}},
+              {key: 'private', label: '标记为私密', action: 'bulk-status', input: {status: 'private'}},
+              {key: 'hidden', label: '标记为隐藏', action: 'bulk-status', input: {status: 'hidden'}},
+              {key: 'merge', label: '合并', action: 'merge-says'},
+              {key: 'delete', label: '删除', action: 'delete-says', type: 'danger'}
+            ]},
             toolbar: [{label: '新增碎语', href: '/admin/plugins/say/publish', type: 'primary'}], columns: [
             {key: 'id', title: 'ID'}, {key: 'kind', title: '类型'}, {key: 'status', title: '状态'},
             {key: 'content', title: '内容'}, {key: 'tags', title: '标签'}, {key: 'createdAt', title: '时间'},
             {key: 'actions', title: '操作', type: 'actions'}
-          ], rows: result.items.map(item => ({id: item.id, kind: item.kind, status: item.status,
+          ], rows: items.map(item => ({id: item.id, kind: item.kind, status: item.status,
             content: item.text || item.title || item.url, tags: item.tags.map(tag => `#${tag}`).join(' '),
             createdAt: item.createdAt, actions: [
               {label: '编辑', href: `/admin/plugins/say/edit?id=${item.id}`},
@@ -191,7 +199,6 @@ module.exports = {
               {label: '复制', action: 'duplicate-say', input: {id: item.id}},
               {label: '删除', action: 'delete-say', input: {id: item.id}, type: 'danger'}
             ]}))},
-          {type: 'form', id: 'manage-says'},
           {type: 'markdown', title: '合并规则', content: '支持：文本 + 图片、图文 + 图片、多条图片、文本 + 位置、文本 + 语音。保留最早一条记录的 ID。'}
         ]};
       }
@@ -216,12 +223,6 @@ module.exports = {
         const item = await service.create({...values, kind: 'text'}, context.user.id);
         return {message: `碎语 #${item.id} 已发布。`, item};
       }});
-    ctx.admin.registerForm({id: 'manage-says', page: 'manage', title: '批量管理', submitLabel: '执行', fields: [
-      {name: 'operation', type: 'select', label: '操作', required: true, options: [
-        {label: '修改状态', value: 'status'}, {label: '合并', value: 'merge'}, {label: '删除', value: 'delete'}
-      ]}, {name: 'ids', type: 'text', label: '碎语 ID', required: true, description: '多个 ID 使用逗号分隔。'},
-      {name: 'status', type: 'select', label: '目标状态', options: statusOptions, description: '仅“修改状态”操作使用。'}
-    ], load: async() => ({operation: 'status', ids: '', status: 'public'}), submit: values => service.manage(values)});
     ctx.admin.registerForm({id: 'edit-say', page: 'edit', title: '碎语内容', submitLabel: '保存修改',
       fields: [{name: 'id', type: 'hidden', label: 'ID', required: true}, ...publishFields],
       load: async context => formValues(await service.get(context.ctx.query.id)), submit: async values => {
@@ -235,6 +236,15 @@ module.exports = {
     }});
     ctx.admin.registerAction({id: 'delete-say', page: 'manage', label: '删除', type: 'danger', confirm: '确定删除这条碎语吗？',
       handler: async input => ({message: `已删除 ${await service.remove(input.id)} 条碎语。`})});
+    ctx.admin.registerAction({id: 'bulk-status', page: 'manage', label: '修改状态', handler: async input => {
+      await service.updateStatus(input.ids, input.status); return {message: '选中碎语的状态已更新。'};
+    }});
+    ctx.admin.registerAction({id: 'merge-says', page: 'manage', label: '合并', handler: async input => {
+      const item = await service.merge(input.ids); return {message: `碎语已合并为 #${item.id}。`, item};
+    }});
+    ctx.admin.registerAction({id: 'delete-says', page: 'manage', label: '删除', type: 'danger',
+      confirm: '确定删除选中的碎语吗？', handler: async input =>
+        ({message: `已删除 ${await service.remove(input.ids)} 条碎语。`})});
     ctx.admin.registerForm({id: 'say-settings', page: 'settings', title: '基础设置', submitLabel: '保存设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和外部发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
