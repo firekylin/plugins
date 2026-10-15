@@ -261,13 +261,14 @@ module.exports = {
     ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '基础设置', submitLabel: '保存基础设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和外部发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
+      {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
+        description: '外部 API 和企业微信发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values); return {message: '基础设置已保存。'};
     }});
     ctx.admin.registerForm({id: 'say-external-settings', page: 'settings', title: '外部发布',
       submitLabel: '保存外部发布设置', fields: [
-        {name: 'authorId', type: 'number', label: '外部发布作者 ID', required: true},
         {name: 'apiKey', type: 'password', label: '外部发布 API Key',
           description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'}
       ], load: async() => service.settings(), submit: async values => {
