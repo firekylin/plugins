@@ -16,20 +16,24 @@ const statusOptions = [
   {label: '公开', value: 'public'}, {label: '私密', value: 'private'}, {label: '隐藏', value: 'hidden'}
 ];
 const publishFields = [
-  {name: 'kind', type: 'select', label: '类型', required: true, options: kindOptions},
-  {name: 'status', type: 'select', label: '状态', required: true, options: statusOptions},
+  {name: 'kind', type: 'radio', label: '类型', required: true, options: kindOptions},
+  {name: 'status', type: 'radio', label: '状态', required: true, options: statusOptions},
   {name: 'text', type: 'code', label: '内容', description: '文本类型必填；其他类型可作为附言。使用 #标签 可自动提取标签。'},
   {name: 'tags', type: 'text', label: '标签', description: '可选，使用逗号分隔。'},
-  {name: 'images', type: 'code', label: '图片 URL', description: '图片/图文类型填写，每行一个 URL，或填写 JSON 数组。'},
-  {name: 'mediaUrl', type: 'url', label: '语音 URL', description: '语音类型填写。'},
-  {name: 'latitude', type: 'text', label: '纬度', description: '位置类型填写，范围 -90 到 90。'},
-  {name: 'longitude', type: 'text', label: '经度', description: '位置类型填写，范围 -180 到 180。'},
-  {name: 'label', type: 'text', label: '位置名称'},
-  {name: 'url', type: 'url', label: '链接/音乐 URL', description: '音乐支持网易云音乐歌曲地址，可自动读取标题、作者和封面。'},
-  {name: 'title', type: 'text', label: '链接/音乐标题'},
-  {name: 'description', type: 'textarea', label: '链接描述'},
-  {name: 'artist', type: 'text', label: '音乐作者'},
-  {name: 'cover', type: 'url', label: '封面 URL'}
+  {name: 'images', type: 'code', label: '图片 URL', required: true, visibleWhen: {field: 'kind', values: ['image', 'textpic']},
+    description: '每行一个 URL，或填写 JSON 数组。'},
+  {name: 'mediaUrl', type: 'url', label: '语音 URL', required: true, visibleWhen: {field: 'kind', values: ['voice']}},
+  {name: 'latitude', type: 'text', label: '纬度', required: true, visibleWhen: {field: 'kind', values: ['location']},
+    description: '范围 -90 到 90。'},
+  {name: 'longitude', type: 'text', label: '经度', required: true, visibleWhen: {field: 'kind', values: ['location']},
+    description: '范围 -180 到 180。'},
+  {name: 'label', type: 'text', label: '位置名称', visibleWhen: {field: 'kind', values: ['location']}},
+  {name: 'url', type: 'url', label: '链接/音乐 URL', required: true, visibleWhen: {field: 'kind', values: ['link', 'music']},
+    description: '音乐支持网易云音乐歌曲地址，可自动读取标题、作者和封面。'},
+  {name: 'title', type: 'text', label: '链接/音乐标题', visibleWhen: {field: 'kind', values: ['link', 'music']}},
+  {name: 'description', type: 'textarea', label: '链接描述', visibleWhen: {field: 'kind', values: ['link']}},
+  {name: 'artist', type: 'text', label: '音乐作者', visibleWhen: {field: 'kind', values: ['music']}},
+  {name: 'cover', type: 'url', label: '封面 URL', visibleWhen: {field: 'kind', values: ['link', 'music']}}
 ];
 const textPublishFields = [
   {name: 'status', type: 'radio', label: '状态', required: true, options: statusOptions},
