@@ -3,10 +3,12 @@
 const {SayService, secureEqual, strings} = require('./lib/say-service');
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
-const {downloadWecomMedia, uploadBase64, uploadBuffer} = require('./lib/media');
+const {downloadWechatImage, downloadWechatMedia, downloadWecomMedia, uploadBase64,
+  uploadBuffer} = require('./lib/media');
 const {decrypt, encryptedReply, parseXml, textReply, verify, xmlValue} = require('./lib/wecom');
 
 let service;
+let pluginLogger;
 
 const kindOptions = [
   ['文本', 'text'], ['图片', 'image'], ['图文', 'textpic'], ['语音', 'voice'],
@@ -137,9 +139,85 @@ async function wecomCallback({ctx: request, query, body}) {
   return encryptedReply(reply, settings);
 }
 
+function wechatReply(message, content, settings) {
+  const reply = textReply(message.FromUserName, message.ToUserName, content);
+  return encryptedReply(reply, {wecomEncodingAESKey: settings.wechatEncodingAESKey,
+    wecomCorpId: settings.wechatAppId, wecomToken: settings.wechatToken});
+}
+
+async function fromWechat(message, settings) {
+  const allowed = new Set(strings(settings.wechatAllowedOpenIds));
+  if (!allowed.has(message.FromUserName)) {
+    pluginLogger?.info?.(`say: rejected WeChat publisher OpenID ${message.FromUserName}`);
+    return {reply: '当前微信账号没有发布碎语的权限。'};
+  }
+  const type = message.MsgType.toLowerCase();
+  if (type === 'text') {
+    const text = message.Content.trim();
+    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge 1,2 可合并碎语。'};
+    const merge = /^\/merge\s+(.+)$/i.exec(text);
+    if (merge) {
+      const item = await service.merge(merge[1]);
+      return {reply: `已合并为碎语 #${item.id}`};
+    }
+    const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
+    const input = musicUrl ? await enrich({kind: 'music', status: 'public',
+      text: text.replace(musicUrl, '').trim(), url: musicUrl, source: '微信公众号'})
+      : {kind: 'text', status: 'public', text, source: '微信公众号'};
+    return {item: await service.create(input, settings.authorId)};
+  }
+  if (type === 'image') {
+    let media;
+    try {
+      media = await downloadWechatImage(message.PicUrl);
+    } catch (error) {
+      if (!settings.wechatAppSecret) throw error;
+      media = await downloadWechatMedia(message.MediaId, settings);
+    }
+    const url = await uploadBuffer(media.buffer, media);
+    return {item: await service.create({kind: 'image', images: [url], status: 'public',
+      source: '微信公众号'}, settings.authorId)};
+  }
+  if (type === 'voice') {
+    if (!settings.wechatAppSecret) throw new Error('WeChat AppSecret is not configured');
+    const media = await downloadWechatMedia(message.MediaId, settings);
+    const url = await uploadBuffer(media.buffer, media);
+    return {item: await service.create({kind: 'voice', mediaUrl: url, status: 'public',
+      source: '微信公众号'}, settings.authorId)};
+  }
+  if (type === 'location') return {item: await service.create({kind: 'location', status: 'public',
+    latitude: message.Location_X, longitude: message.Location_Y, label: message.Label,
+    source: '微信公众号'}, settings.authorId)};
+  if (type === 'link') return {item: await service.create({kind: 'link', status: 'public', url: message.Url,
+    title: message.Title, description: message.Description, source: '微信公众号'}, settings.authorId)};
+  return {reply: `暂不支持微信公众号消息类型：${type || 'unknown'}`};
+}
+
+async function wechatCallback({ctx: request, query, body}) {
+  const settings = await service.settings();
+  if (!settings.enabled || !settings.wechatAppId || !settings.wechatToken || !settings.wechatEncodingAESKey) {
+    return request.throw(503, 'WeChat callback is not configured');
+  }
+  if (request.method === 'GET') {
+    if (!verify({token: settings.wechatToken, timestamp: query.timestamp, nonce: query.nonce,
+      encrypted: query.echostr, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeChat signature');
+    request.type = 'text/plain; charset=utf-8';
+    return decrypt(query.echostr, settings.wechatEncodingAESKey, settings.wechatAppId);
+  }
+  const envelope = rawRequestBody(request, body);
+  const encrypted = xmlValue(envelope, 'Encrypt');
+  if (!encrypted || !verify({token: settings.wechatToken, timestamp: query.timestamp, nonce: query.nonce,
+    encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeChat signature');
+  const message = parseXml(decrypt(encrypted, settings.wechatEncodingAESKey, settings.wechatAppId));
+  const result = await fromWechat(message, settings);
+  request.type = 'application/xml; charset=utf-8';
+  return wechatReply(message, result.reply || `碎语 #${result.item.id} 已发布`, settings);
+}
+
 module.exports = {
   register(ctx) {
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
+    pluginLogger = ctx.logger;
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
         const result = await service.list({publicOnly: true, page: this.parameter.page,
@@ -163,6 +241,7 @@ module.exports = {
       return service.create(await enrich(await ingestApiMedia({...body, source: body.source || 'API'})), settings.authorId);
     }});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false, handler: wecomCallback});
+    ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false, handler: wechatCallback});
     const renderPage = async(request, query, tag = '') => {
       const settings = await service.settings();
       const result = await service.list({...query, tag, publicOnly: true});
@@ -215,7 +294,7 @@ module.exports = {
       description: '修改单条碎语的内容与状态。',
       load: async() => ({sections: [{type: 'form', id: 'edit-say'}]})});
     ctx.admin.registerPage({
-      id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表、外部发布和企业微信回调。',
+      id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
       load: async() => ({sections: [
         {type: 'form', id: 'say-basic-settings'},
         {type: 'divider', title: '发布设置'},
@@ -228,6 +307,11 @@ module.exports = {
           {key: 'wecom', label: '企业微信发布', sections: [
             {type: 'form', id: 'say-wecom-settings'},
             {type: 'markdown', title: '回调地址', content: '`/api/plugins/say/wecom`'}
+          ]},
+          {key: 'wechat', label: '微信公众号发布', sections: [
+            {type: 'form', id: 'say-wechat-settings'},
+            {type: 'markdown', title: '回调设置', content:
+              '回调地址：`/api/plugins/say/wechat`。公众号服务器配置必须选择安全模式，并将允许发布者的 OpenID 加入白名单。'}
           ]}
         ]},
         {type: 'markdown', title: '公开访问', content:
@@ -263,10 +347,10 @@ module.exports = {
       confirm: '确定删除选中的碎语吗？', handler: async input =>
         ({message: `已删除 ${await service.remove(input.ids)} 条碎语。`})});
     ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '基础设置', submitLabel: '保存基础设置', fields: [
-      {name: 'enabled', type: 'switch', label: '启用公开列表和外部发布'},
+      {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
-        description: '外部 API 和企业微信发布的碎语都会归属到这个用户。'},
+        description: '外部 API、企业微信和微信公众号发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values); return {message: '基础设置已保存。'};
@@ -286,6 +370,19 @@ module.exports = {
       {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values); return {message: '企业微信设置已保存。'};
+    }});
+    ctx.admin.registerForm({id: 'say-wechat-settings', page: 'settings', title: '微信公众号发布',
+      submitLabel: '保存微信公众号设置', fields: [
+      {name: 'wechatAppId', type: 'text', label: '公众号 AppID'},
+      {name: 'wechatAppSecret', type: 'password', label: '公众号 AppSecret',
+        description: '用于下载语音，以及图片 URL 不可用时下载临时素材；留空会保留原值。'},
+      {name: 'wechatToken', type: 'password', label: '公众号回调 Token', description: '留空会保留原值。'},
+      {name: 'wechatEncodingAESKey', type: 'password', label: '公众号 EncodingAESKey',
+        description: '服务器配置需要选择安全模式；留空会保留原值。'},
+      {name: 'wechatAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
+        description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'}
+    ], load: async() => service.settings(), submit: async values => {
+      await service.saveSettings(values); return {message: '微信公众号设置已保存。'};
     }});
   }
 };

@@ -15,7 +15,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   wecomCorpId: '',
   wecomCorpSecret: '',
   wecomToken: '',
-  wecomEncodingAESKey: ''
+  wecomEncodingAESKey: '',
+  wechatAppId: '',
+  wechatAppSecret: '',
+  wechatToken: '',
+  wechatEncodingAESKey: '',
+  wechatAllowedOpenIds: ''
 });
 
 function parse(value, fallback = {}) {
@@ -38,6 +43,10 @@ function normalizeSettings(value = {}, previous = {}) {
       !/^[A-Za-z0-9+/]{43}$/.test(value.wecomEncodingAESKey)) {
     throw Object.assign(new Error('WeCom EncodingAESKey must be 43 characters'), {status: 400});
   }
+  if (typeof value.wechatEncodingAESKey === 'string' && value.wechatEncodingAESKey &&
+      !/^[A-Za-z0-9+/]{43}$/.test(value.wechatEncodingAESKey)) {
+    throw Object.assign(new Error('WeChat EncodingAESKey must be 43 characters'), {status: 400});
+  }
   return {
     enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
@@ -50,7 +59,16 @@ function normalizeSettings(value = {}, previous = {}) {
     wecomToken: typeof value.wecomToken === 'string' && value.wecomToken
       ? value.wecomToken.trim().slice(0, 256) : prior.wecomToken,
     wecomEncodingAESKey: typeof value.wecomEncodingAESKey === 'string' && value.wecomEncodingAESKey
-      ? value.wecomEncodingAESKey.trim().slice(0, 256) : prior.wecomEncodingAESKey
+      ? value.wecomEncodingAESKey.trim().slice(0, 256) : prior.wecomEncodingAESKey,
+    wechatAppId: typeof value.wechatAppId === 'string' ? value.wechatAppId.trim().slice(0, 128) : prior.wechatAppId,
+    wechatAppSecret: typeof value.wechatAppSecret === 'string' && value.wechatAppSecret
+      ? value.wechatAppSecret.trim().slice(0, 256) : prior.wechatAppSecret,
+    wechatToken: typeof value.wechatToken === 'string' && value.wechatToken
+      ? value.wechatToken.trim().slice(0, 256) : prior.wechatToken,
+    wechatEncodingAESKey: typeof value.wechatEncodingAESKey === 'string' && value.wechatEncodingAESKey
+      ? value.wechatEncodingAESKey.trim().slice(0, 256) : prior.wechatEncodingAESKey,
+    wechatAllowedOpenIds: typeof value.wechatAllowedOpenIds === 'string'
+      ? [...new Set(strings(value.wechatAllowedOpenIds))].join('\n') : prior.wechatAllowedOpenIds
   };
 }
 

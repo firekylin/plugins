@@ -80,10 +80,13 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.throws(() => normalize({kind: 'image', images: 'file:///etc/passwd'}), /HTTP or HTTPS/);
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
     {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
-      wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: ''});
+      wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
+      wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: ''});
   assert.equal(normalizeSettings({authorId: 2}, {enabled: false}).enabled, false);
+  assert.equal(normalizeSettings({wechatAllowedOpenIds: 'one\ntwo,one'}).wechatAllowedOpenIds, 'one\ntwo');
   assert.throws(() => normalizeSettings({apiKey: 'short'}), /at least 16/);
   assert.throws(() => normalizeSettings({wecomEncodingAESKey: 'short'}), /43 characters/);
+  assert.throws(() => normalizeSettings({wechatEncodingAESKey: 'short'}), /43 characters/);
 });
 
 test('creates isolated type-3 records and only exposes public says', async() => {

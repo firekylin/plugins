@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const MAX_BYTES = 20 * 1024 * 1024;
+const wechatTokens = new Map();
 const ALLOWED = new Map([
   ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/gif', '.gif'], ['image/webp', '.webp'],
   ['audio/mpeg', '.mp3'], ['audio/amr', '.amr'], ['audio/amr-wb', '.amr'], ['application/octet-stream', '']
@@ -118,4 +119,60 @@ async function downloadWecomMedia(mediaId, settings, fetchImpl = global.fetch) {
   return {buffer, filename: cleanName(filename), mime};
 }
 
-module.exports = {ALLOWED, MAX_BYTES, decodeBase64Media, detectedType, downloadWecomMedia, uploadBase64, uploadBuffer, wecomAccessToken};
+async function wechatAccessToken(settings, fetchImpl = global.fetch, now = Date.now) {
+  const cacheKey = `${settings.wechatAppId}:${settings.wechatAppSecret}`;
+  const cached = wechatTokens.get(cacheKey);
+  if (cached && cached.expiresAt > now() + 60000) return cached.value;
+  const url = new URL('https://api.weixin.qq.com/cgi-bin/token');
+  url.searchParams.set('grant_type', 'client_credential');
+  url.searchParams.set('appid', settings.wechatAppId);
+  url.searchParams.set('secret', settings.wechatAppSecret);
+  const response = await fetchImpl(url, {signal: AbortSignal.timeout(5000)});
+  const result = await response.json();
+  if (!response.ok || result.errcode || !result.access_token) {
+    throw new Error(`WeChat token error: ${result.errmsg || response.status}`);
+  }
+  wechatTokens.set(cacheKey, {value: result.access_token,
+    expiresAt: now() + Math.max(0, Number(result.expires_in || 7200) - 120) * 1000});
+  return result.access_token;
+}
+
+async function downloadWechatMedia(mediaId, settings, fetchImpl = global.fetch) {
+  if (!/^[A-Za-z0-9_@.-]{1,512}$/.test(String(mediaId || ''))) throw new Error('Invalid WeChat media ID');
+  const token = await wechatAccessToken(settings, fetchImpl);
+  const url = new URL('https://api.weixin.qq.com/cgi-bin/media/get');
+  url.searchParams.set('access_token', token);
+  url.searchParams.set('media_id', mediaId);
+  const response = await fetchImpl(url, {redirect: 'error', signal: AbortSignal.timeout(10000)});
+  if (!response.ok) throw new Error(`WeChat media download error: ${response.status}`);
+  const mime = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0];
+  if (mime === 'application/json' || mime === 'text/plain') {
+    const result = await response.json();
+    throw new Error(`WeChat media error: ${result.errmsg || result.errcode}`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_BYTES) throw new Error('WeChat media exceeds 20 MB');
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] || `wechat-${mediaId}${ALLOWED.get(mime) || ''}`;
+  return {buffer, filename: cleanName(filename), mime};
+}
+
+async function downloadWechatImage(value, fetchImpl = global.fetch) {
+  const url = new URL(String(value || ''));
+  if (!['http:', 'https:'].includes(url.protocol) ||
+      !(url.hostname === 'qpic.cn' || url.hostname.endsWith('.qpic.cn'))) {
+    throw new Error('Invalid WeChat image URL');
+  }
+  url.protocol = 'https:';
+  const response = await fetchImpl(url, {redirect: 'error', signal: AbortSignal.timeout(10000)});
+  if (!response.ok) throw new Error(`WeChat image download error: ${response.status}`);
+  const declaredLength = Number(response.headers.get('content-length') || 0);
+  if (declaredLength > MAX_BYTES) throw new Error('WeChat image exceeds 20 MB');
+  const mime = (response.headers.get('content-type') || 'image/jpeg').split(';')[0];
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_BYTES) throw new Error('WeChat image exceeds 20 MB');
+  return {buffer, filename: `wechat-image-${Date.now()}${ALLOWED.get(mime) || '.jpg'}`, mime};
+}
+
+module.exports = {ALLOWED, MAX_BYTES, decodeBase64Media, detectedType, downloadWechatImage, downloadWechatMedia,
+  downloadWecomMedia, uploadBase64, uploadBuffer, wechatAccessToken, wecomAccessToken};

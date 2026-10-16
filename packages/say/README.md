@@ -16,6 +16,7 @@
 - 外部接口支持 base64 图片与语音，统一交给 Firekylin 当前配置的上传服务
 - 自动识别网易云音乐歌曲地址并读取标题、作者和封面
 - 企业微信加密回调，支持文本、图片、语音、位置、链接、表情替换以及 `/help`、`/merge` 命令
+- 微信公众号安全模式回调，支持文本、图片、语音、位置、链接、OpenID 白名单以及 `/help`、`/merge` 命令
 
 碎语保存在 Firekylin 的 `post` 表中，使用独立的 `type=3`，不会出现在文章、页面或附件列表里。
 
@@ -59,3 +60,21 @@ https://example.com/api/plugins/say/wecom
 图片和语音会先从企业微信下载，再交给 Firekylin 当前配置的上传服务。AMR 语音会保留原始格式；能否直接播放取决于浏览器和存储服务返回的内容类型。
 
 如需在位置碎语中显示静态地图，可选填高德地图 Web 服务 Key。插件不会配置额外的图片压缩服务。
+
+## 微信公众号
+
+在微信公众号后台启用服务器配置，并选择**安全模式**。将公众号 AppID、AppSecret、Token、
+EncodingAESKey 和允许发布者的 OpenID 填入插件设置，然后将服务器地址设为：
+
+```text
+https://example.com/api/plugins/say/wechat
+```
+
+允许发布的 OpenID 每行或用逗号分隔填写一个；白名单为空时所有关注者都不能发布。可以先向
+公众号发送一条消息，再从 Firekylin 服务日志中的 `rejected WeChat publisher OpenID` 记录取得
+OpenID，加入白名单后重新发送。
+
+文本、位置和链接直接使用回调数据。图片优先从微信回调提供的 `PicUrl` 下载并转存；语音通过
+AppID 和 AppSecret 获取临时素材，再交给 Firekylin 当前配置的上传服务。获取语音素材可能需要
+在微信公众号后台配置服务器出口 IP 白名单；Vercel 默认出口 IP 不固定。AMR 语音会保留原始
+格式，不进行 MP3 转码。
