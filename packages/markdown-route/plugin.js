@@ -20,7 +20,7 @@ module.exports = {
         request.type = 'text/markdown; charset=utf-8';
         request.set('X-Content-Type-Options', 'nosniff');
         request.set('Cache-Control', 'public, max-age=60');
-        return request.method === 'HEAD' ? '' : markdown;
+        return markdown;
       }
     });
   }

@@ -41,7 +41,7 @@ test('registers a public site route and serves Markdown response headers', async
   assert.equal(ctx.headers['Cache-Control'], 'public, max-age=60');
 
   const head = request('HEAD');
-  assert.equal(await route.handler({ctx: head, params: {slug: 'article'}}), '');
+  assert.equal(await route.handler({ctx: head, params: {slug: 'article'}}), '# Article');
 });
 
 test('returns 404 when no eligible article exists', async() => {
