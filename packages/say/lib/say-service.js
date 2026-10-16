@@ -114,8 +114,10 @@ function safeUrl(value, label) {
 }
 
 function normalize(input = {}) {
-  const kind = KINDS.has(input.kind) ? input.kind : 'text';
-  const status = STATUSES.has(input.status) ? input.status : 'public';
+  const kind = typeof input.kind === 'undefined' || input.kind === null ? 'text' : input.kind;
+  const status = typeof input.status === 'undefined' || input.status === null ? 'public' : input.status;
+  if (!KINDS.has(kind)) throw Object.assign(new Error('Invalid say kind'), {status: 400});
+  if (!STATUSES.has(status)) throw Object.assign(new Error('Invalid say status'), {status: 400});
   const text = String(input.text || '').trim().slice(0, 20000);
   const data = {kind, status, text, tags: tags(input.tags, text), source: String(input.source || 'Firekylin').slice(0, 80)};
   if (['image', 'textpic'].includes(kind)) {
@@ -198,6 +200,10 @@ function secureEqual(actual, expected) {
 }
 
 function mergeData(items) {
+  const mergeableKinds = new Set(['text', 'image', 'textpic', 'location', 'voice']);
+  if (items.some(item => !mergeableKinds.has(item.kind))) {
+    throw Object.assign(new Error('Selected says contain an unsupported merge type'), {status: 400});
+  }
   const byKind = kind => items.filter(item => item.kind === kind);
   const texts = byKind('text');
   const images = byKind('image');

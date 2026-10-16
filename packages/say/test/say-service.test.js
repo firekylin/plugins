@@ -78,6 +78,8 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.deepEqual(item.tags, ['tag']);
   assert.equal(item.images[0], 'https://example.test/a.jpg');
   assert.throws(() => normalize({kind: 'image', images: 'file:///etc/passwd'}), /HTTP or HTTPS/);
+  assert.throws(() => normalize({kind: 'unknown', text: 'content'}), /Invalid say kind/);
+  assert.throws(() => normalize({status: 'privte', text: 'content'}), /Invalid say status/);
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
     {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
@@ -136,6 +138,9 @@ test('merges compatible say types', async() => {
   assert.equal(merged.text, 'caption');
   assert.deepEqual(merged.tags, ['one', 'two']);
   assert.throws(() => mergeData([{kind: 'text'}, {kind: 'text'}]), /merge rule/);
+  assert.throws(() => mergeData([{kind: 'text', text: 'caption'},
+    {kind: 'image', images: ['https://example.test/a.jpg']},
+    {kind: 'link', url: 'https://example.test'}]), /unsupported merge type/);
 
   const {service} = fixture();
   await service.create({kind: 'text', text: 'caption'}, 1);
@@ -144,6 +149,17 @@ test('merges compatible say types', async() => {
   assert.equal(result.id, 1);
   assert.equal((await service.list()).total, 1);
   assert.equal((await service.list()).items[0].kind, 'textpic');
+});
+
+test('filters and paginates the complete say result set', async() => {
+  const {service} = fixture();
+  for (let index = 0; index < 1005; index++) {
+    await service.create({kind: 'text', text: `Say ${index}`, status: 'public'}, 1);
+  }
+  const result = await service.list({page: 11, pageSize: 100, publicOnly: true});
+  assert.equal(result.total, 1005);
+  assert.equal(result.items.length, 5);
+  assert.equal(result.items.at(-1).text, 'Say 0');
 });
 
 test('compares API keys safely and escapes the standalone page', () => {
