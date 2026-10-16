@@ -1,5 +1,5 @@
 {
-  "name": "@firekylin/plugin-markdown-route",
+  "name": "firekylin-plugin-markdown-route",
   "version": "1.0.0",
   "description": "Expose published Firekylin articles as raw Markdown",
   "main": "plugin.js",
