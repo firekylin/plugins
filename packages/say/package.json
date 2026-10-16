@@ -1,0 +1,26 @@
+{
+  "name": "firekylin-plugin-say",
+  "version": "1.0.0",
+  "description": "A lightweight microblog and status publishing plugin for Firekylin",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/say"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.10.7"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "say",
+    "entry": "plugin.js",
+    "permissions": ["content:read", "content:write"]
+  },
+  "files": ["lib", "plugin.js", "README.md"]
+}

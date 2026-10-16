@@ -26,6 +26,7 @@ importers:
   packages/friend-links: {}
   packages/markdown-route: {}
   packages/relate-post: {}
+  packages/say: {}
 
 packages:
 
