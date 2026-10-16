@@ -6,9 +6,11 @@ const path = require('node:path');
 
 const MAX_BYTES = 20 * 1024 * 1024;
 const wechatTokens = new Map();
+const feishuTokens = new Map();
 const ALLOWED = new Map([
   ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/gif', '.gif'], ['image/webp', '.webp'],
-  ['audio/mpeg', '.mp3'], ['audio/amr', '.amr'], ['audio/amr-wb', '.amr'], ['application/octet-stream', '']
+  ['audio/mpeg', '.mp3'], ['audio/amr', '.amr'], ['audio/amr-wb', '.amr'], ['audio/ogg', '.ogg'],
+  ['application/octet-stream', '']
 ]);
 
 function cleanName(value, fallback = 'say-media') {
@@ -25,6 +27,7 @@ function detectedType(buffer) {
   if (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) return 'audio/mpeg';
   if (buffer.length >= 6 && buffer.subarray(0, 6).toString() === '#!AMR\n') return 'audio/amr';
   if (buffer.length >= 9 && buffer.subarray(0, 9).toString() === '#!AMR-WB\n') return 'audio/amr-wb';
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString() === 'OggS') return 'audio/ogg';
   return '';
 }
 
@@ -50,7 +53,8 @@ async function uploadBuffer(buffer, {filename, mime}, dependencies = {}) {
   if (!ALLOWED.has(mime)) throw Object.assign(new Error(`Unsupported media type: ${mime}`), {status: 400});
   const detected = detectedType(buffer);
   const extensionType = new Map([['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.png', 'image/png'],
-    ['.gif', 'image/gif'], ['.webp', 'image/webp'], ['.mp3', 'audio/mpeg'], ['.amr', 'audio/amr']])
+    ['.gif', 'image/gif'], ['.webp', 'image/webp'], ['.mp3', 'audio/mpeg'], ['.amr', 'audio/amr'],
+    ['.ogg', 'audio/ogg'], ['.opus', 'audio/ogg']])
     .get(path.extname(String(filename || '')).toLowerCase());
   if (!detected || (mime !== 'application/octet-stream' && detected !== mime) ||
       (mime === 'application/octet-stream' && extensionType && !detected.startsWith(extensionType.split('/')[0] + '/'))) {
@@ -174,5 +178,50 @@ async function downloadWechatImage(value, fetchImpl = global.fetch) {
   return {buffer, filename: `wechat-image-${Date.now()}${ALLOWED.get(mime) || '.jpg'}`, mime};
 }
 
-module.exports = {ALLOWED, MAX_BYTES, decodeBase64Media, detectedType, downloadWechatImage, downloadWechatMedia,
-  downloadWecomMedia, uploadBase64, uploadBuffer, wechatAccessToken, wecomAccessToken};
+async function feishuAccessToken(settings, fetchImpl = global.fetch, now = Date.now) {
+  const cacheKey = `${settings.feishuAppId}:${settings.feishuAppSecret}`;
+  const cached = feishuTokens.get(cacheKey);
+  if (cached && cached.expiresAt > now() + 60000) return cached.value;
+  const response = await fetchImpl('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+    method: 'POST', headers: {'Content-Type': 'application/json; charset=utf-8'},
+    body: JSON.stringify({app_id: settings.feishuAppId, app_secret: settings.feishuAppSecret}),
+    signal: AbortSignal.timeout(5000)
+  });
+  const result = await response.json();
+  if (!response.ok || result.code || !result.tenant_access_token) {
+    throw new Error(`Feishu token error: ${result.msg || response.status}`);
+  }
+  feishuTokens.set(cacheKey, {value: result.tenant_access_token,
+    expiresAt: now() + Math.max(0, Number(result.expire || 7200) - 120) * 1000});
+  return result.tenant_access_token;
+}
+
+async function downloadFeishuResource(messageId, fileKey, type, settings, fetchImpl = global.fetch) {
+  if (!/^om_[A-Za-z0-9_-]{1,256}$/.test(String(messageId || '')) ||
+      !/^[A-Za-z0-9_-]{1,512}$/.test(String(fileKey || '')) || !['image', 'file'].includes(type)) {
+    throw new Error('Invalid Feishu message resource');
+  }
+  const token = await feishuAccessToken(settings, fetchImpl);
+  const url = new URL(`https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${fileKey}`);
+  url.searchParams.set('type', type);
+  const response = await fetchImpl(url, {headers: {Authorization: `Bearer ${token}`}, redirect: 'error',
+    signal: AbortSignal.timeout(10000)});
+  if (!response.ok) throw new Error(`Feishu resource download error: ${response.status}`);
+  let mime = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0];
+  if (mime === 'application/json') {
+    const result = await response.json();
+    throw new Error(`Feishu resource error: ${result.msg || result.code}`);
+  }
+  if (mime === 'audio/opus') mime = 'audio/ogg';
+  const declaredLength = Number(response.headers.get('content-length') || 0);
+  if (declaredLength > MAX_BYTES) throw new Error('Feishu resource exceeds 20 MB');
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_BYTES) throw new Error('Feishu resource exceeds 20 MB');
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] || `feishu-${fileKey}${ALLOWED.get(mime) || ''}`;
+  return {buffer, filename: cleanName(filename), mime};
+}
+
+module.exports = {ALLOWED, MAX_BYTES, decodeBase64Media, detectedType, downloadFeishuResource, downloadWechatImage,
+  downloadWechatMedia, downloadWecomMedia, feishuAccessToken, uploadBase64, uploadBuffer, wechatAccessToken,
+  wecomAccessToken};

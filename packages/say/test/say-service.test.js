@@ -81,9 +81,11 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
     {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
-      wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: ''});
+      wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: '', feishuAppId: '',
+      feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '', feishuAllowedOpenIds: ''});
   assert.equal(normalizeSettings({authorId: 2}, {enabled: false}).enabled, false);
   assert.equal(normalizeSettings({wechatAllowedOpenIds: 'one\ntwo,one'}).wechatAllowedOpenIds, 'one\ntwo');
+  assert.equal(normalizeSettings({feishuAllowedOpenIds: 'ou_one, ou_two'}).feishuAllowedOpenIds, 'ou_one\nou_two');
   assert.throws(() => normalizeSettings({apiKey: 'short'}), /at least 16/);
   assert.throws(() => normalizeSettings({wecomEncodingAESKey: 'short'}), /43 characters/);
   assert.throws(() => normalizeSettings({wechatEncodingAESKey: 'short'}), /43 characters/);

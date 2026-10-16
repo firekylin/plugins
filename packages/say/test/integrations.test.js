@@ -1,8 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const test = require('node:test');
-const {decodeBase64Media, detectedType, downloadWechatImage, uploadBuffer, wechatAccessToken} = require('../lib/media');
+const {decrypt: decryptFeishu, messageEvent, signature: feishuSignature, verify: verifyFeishu} = require('../lib/feishu');
+const {decodeBase64Media, detectedType, downloadWechatImage, feishuAccessToken, uploadBuffer,
+  wechatAccessToken} = require('../lib/media');
 const {normalizeNeteaseUrl, resolveNeteaseMusic} = require('../lib/netease');
 const {decrypt, encrypt, encryptedReply, parseXml, signature, verify} = require('../lib/wecom');
 
@@ -81,4 +84,34 @@ test('only downloads callback images from the WeChat image CDN', async() => {
   const media = await downloadWechatImage('http://mmbiz.qpic.cn/example/0', fetchImpl);
   assert.equal(media.mime, 'image/png');
   await assert.rejects(downloadWechatImage('https://example.com/image.jpg', fetchImpl), /Invalid WeChat image URL/);
+});
+
+test('verifies, decrypts and parses Feishu message events', () => {
+  const payload = {schema: '2.0', header: {event_id: 'event', event_type: 'im.message.receive_v1', token: 'token'},
+    event: {sender: {sender_id: {open_id: 'ou_user'}}, message: {message_id: 'om_message', message_type: 'text',
+      content: JSON.stringify({text: 'hello'}), mentions: []}}};
+  const encryptKey = 'encrypt-key';
+  const key = crypto.createHash('sha256').update(encryptKey).digest();
+  const iv = Buffer.alloc(16, 7);
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const encrypted = Buffer.concat([iv, cipher.update(JSON.stringify(payload)), cipher.final()]).toString('base64');
+  assert.deepEqual(decryptFeishu(encrypted, encryptKey), payload);
+  const body = JSON.stringify({encrypt: encrypted});
+  const value = feishuSignature('1000', 'nonce', encryptKey, body);
+  assert.equal(verifyFeishu({timestamp: '1000', nonce: 'nonce', encryptKey, body, value,
+    now: () => 1000 * 1000}), true);
+  assert.equal(messageEvent(payload).content.text, 'hello');
+});
+
+test('gets and caches Feishu tenant access tokens', async() => {
+  let calls = 0;
+  const fetchImpl = async(_url, options) => {
+    calls++;
+    assert.deepEqual(JSON.parse(options.body), {app_id: 'cli-test-cache', app_secret: 'secret'});
+    return {ok: true, json: async() => ({code: 0, tenant_access_token: 'token', expire: 7200})};
+  };
+  const settings = {feishuAppId: 'cli-test-cache', feishuAppSecret: 'secret'};
+  assert.equal(await feishuAccessToken(settings, fetchImpl, () => 1000), 'token');
+  assert.equal(await feishuAccessToken(settings, fetchImpl, () => 2000), 'token');
+  assert.equal(calls, 1);
 });

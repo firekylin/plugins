@@ -1,14 +1,17 @@
 'use strict';
 
 const {SayService, secureEqual, strings} = require('./lib/say-service');
+const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feishuMessageEvent,
+  verify: verifyFeishu} = require('./lib/feishu');
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
-const {downloadWechatImage, downloadWechatMedia, downloadWecomMedia, uploadBase64,
-  uploadBuffer} = require('./lib/media');
+const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
+  uploadBase64, uploadBuffer} = require('./lib/media');
 const {decrypt, encryptedReply, parseXml, textReply, verify, xmlValue} = require('./lib/wecom');
 
 let service;
 let pluginLogger;
+const feishuEvents = new Set();
 
 const kindOptions = [
   ['文本', 'text'], ['图片', 'image'], ['图文', 'textpic'], ['语音', 'voice'],
@@ -214,6 +217,79 @@ async function wechatCallback({ctx: request, query, body}) {
   return wechatReply(message, result.reply || `碎语 #${result.item.id} 已发布`, settings);
 }
 
+function rawJsonRequestBody(request, body) {
+  if (typeof request.request.rawBody === 'string') return request.request.rawBody;
+  if (Buffer.isBuffer(request.request.rawBody)) return request.request.rawBody.toString();
+  if (typeof body === 'string') return body;
+  return JSON.stringify(body || {});
+}
+
+async function fromFeishu(message, settings) {
+  const allowed = new Set(strings(settings.feishuAllowedOpenIds));
+  if (!allowed.has(message.openId)) {
+    pluginLogger?.info?.(`say: rejected Feishu publisher OpenID ${message.openId}`);
+    return;
+  }
+  const source = '飞书';
+  if (message.messageType === 'text') {
+    let text = String(message.content.text || '');
+    for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
+    text = text.trim();
+    if (!text || text === '/help') return;
+    const merge = /^\/merge\s+(.+)$/i.exec(text);
+    if (merge) return service.merge(merge[1]);
+    const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
+    if (musicUrl) return service.create(await enrich({kind: 'music', status: 'public',
+      text: text.replace(musicUrl, '').trim(), url: musicUrl, source}), settings.authorId);
+    if (/^https?:\/\/\S+$/.test(text)) {
+      return service.create({kind: 'link', status: 'public', url: text, title: text, source}, settings.authorId);
+    }
+    return service.create({kind: 'text', status: 'public', text, source}, settings.authorId);
+  }
+  if (message.messageType === 'image') {
+    const media = await downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings);
+    const url = await uploadBuffer(media.buffer, media);
+    return service.create({kind: 'image', status: 'public', images: [url], source}, settings.authorId);
+  }
+  if (message.messageType === 'audio') {
+    const media = await downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings);
+    const url = await uploadBuffer(media.buffer, media);
+    return service.create({kind: 'voice', status: 'public', mediaUrl: url, source}, settings.authorId);
+  }
+  if (message.messageType === 'location') {
+    return service.create({kind: 'location', status: 'public', latitude: message.content.latitude,
+      longitude: message.content.longitude, label: message.content.name, source}, settings.authorId);
+  }
+  pluginLogger?.info?.(`say: ignored Feishu message type ${message.messageType || 'unknown'}`);
+}
+
+async function feishuCallback({ctx: request, body}) {
+  const settings = await service.settings();
+  if (!settings.enabled || !settings.feishuAppId || !settings.feishuVerificationToken ||
+      !settings.feishuEncryptKey) return request.throw(503, 'Feishu callback is not configured');
+  const rawBody = rawJsonRequestBody(request, body);
+  if (!verifyFeishu({timestamp: request.get('X-Lark-Request-Timestamp'),
+    nonce: request.get('X-Lark-Request-Nonce'), encryptKey: settings.feishuEncryptKey, body: rawBody,
+    value: request.get('X-Lark-Signature')})) return request.throw(401, 'Invalid Feishu signature');
+  const envelope = typeof body === 'object' && body ? body : JSON.parse(rawBody);
+  const payload = envelope.encrypt ? decryptFeishu(envelope.encrypt, settings.feishuEncryptKey) : envelope;
+  if (!secureEqual(feishuEventToken(payload), settings.feishuVerificationToken)) {
+    return request.throw(401, 'Invalid Feishu verification token');
+  }
+  if (payload.challenge) return {challenge: payload.challenge};
+  if (payload.header?.app_id && payload.header.app_id !== settings.feishuAppId) {
+    return request.throw(401, 'Invalid Feishu app ID');
+  }
+  const message = feishuMessageEvent(payload);
+  if (!message || feishuEvents.has(message.eventId)) return {};
+  await fromFeishu(message, settings);
+  if (message.eventId) {
+    feishuEvents.add(message.eventId);
+    if (feishuEvents.size > 1000) feishuEvents.delete(feishuEvents.values().next().value);
+  }
+  return {};
+}
+
 module.exports = {
   register(ctx) {
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
@@ -242,6 +318,7 @@ module.exports = {
     }});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false, handler: wecomCallback});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false, handler: wechatCallback});
+    ctx.routes.register({method: 'POST', path: '/feishu', csrf: false, handler: feishuCallback});
     const renderPage = async(request, query, tag = '') => {
       const settings = await service.settings();
       const result = await service.list({...query, tag, publicOnly: true});
@@ -312,6 +389,11 @@ module.exports = {
             {type: 'form', id: 'say-wechat-settings'},
             {type: 'markdown', title: '回调设置', content:
               '回调地址：`/api/plugins/say/wechat`。公众号服务器配置必须选择安全模式，并将允许发布者的 OpenID 加入白名单。'}
+          ]},
+          {key: 'feishu', label: '飞书发布', sections: [
+            {type: 'form', id: 'say-feishu-settings'},
+            {type: 'markdown', title: '事件订阅', content:
+              '请求地址：`/api/plugins/say/feishu`。请配置 Encrypt Key，订阅 `im.message.receive_v1`，并将发布者 OpenID 加入白名单。'}
           ]}
         ]},
         {type: 'markdown', title: '公开访问', content:
@@ -350,7 +432,7 @@ module.exports = {
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
-        description: '外部 API、企业微信和微信公众号发布的碎语都会归属到这个用户。'},
+        description: '外部 API、企业微信、微信公众号和飞书发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values); return {message: '基础设置已保存。'};
@@ -383,6 +465,20 @@ module.exports = {
         description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values); return {message: '微信公众号设置已保存。'};
+    }});
+    ctx.admin.registerForm({id: 'say-feishu-settings', page: 'settings', title: '飞书发布',
+      submitLabel: '保存飞书设置', fields: [
+      {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
+      {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
+        description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
+      {name: 'feishuVerificationToken', type: 'password', label: '飞书 Verification Token',
+        description: '在事件与回调的加密策略中获取；留空会保留原值。'},
+      {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
+        description: '用于回调签名校验和事件解密；留空会保留原值。'},
+      {name: 'feishuAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
+        description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
+    ], load: async() => service.settings(), submit: async values => {
+      await service.saveSettings(values); return {message: '飞书设置已保存。'};
     }});
   }
 };

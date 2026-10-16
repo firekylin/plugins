@@ -20,7 +20,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   wechatAppSecret: '',
   wechatToken: '',
   wechatEncodingAESKey: '',
-  wechatAllowedOpenIds: ''
+  wechatAllowedOpenIds: '',
+  feishuAppId: '',
+  feishuAppSecret: '',
+  feishuVerificationToken: '',
+  feishuEncryptKey: '',
+  feishuAllowedOpenIds: ''
 });
 
 function parse(value, fallback = {}) {
@@ -68,7 +73,16 @@ function normalizeSettings(value = {}, previous = {}) {
     wechatEncodingAESKey: typeof value.wechatEncodingAESKey === 'string' && value.wechatEncodingAESKey
       ? value.wechatEncodingAESKey.trim().slice(0, 256) : prior.wechatEncodingAESKey,
     wechatAllowedOpenIds: typeof value.wechatAllowedOpenIds === 'string'
-      ? [...new Set(strings(value.wechatAllowedOpenIds))].join('\n') : prior.wechatAllowedOpenIds
+      ? [...new Set(strings(value.wechatAllowedOpenIds))].join('\n') : prior.wechatAllowedOpenIds,
+    feishuAppId: typeof value.feishuAppId === 'string' ? value.feishuAppId.trim().slice(0, 128) : prior.feishuAppId,
+    feishuAppSecret: typeof value.feishuAppSecret === 'string' && value.feishuAppSecret
+      ? value.feishuAppSecret.trim().slice(0, 256) : prior.feishuAppSecret,
+    feishuVerificationToken: typeof value.feishuVerificationToken === 'string' && value.feishuVerificationToken
+      ? value.feishuVerificationToken.trim().slice(0, 256) : prior.feishuVerificationToken,
+    feishuEncryptKey: typeof value.feishuEncryptKey === 'string' && value.feishuEncryptKey
+      ? value.feishuEncryptKey.trim().slice(0, 256) : prior.feishuEncryptKey,
+    feishuAllowedOpenIds: typeof value.feishuAllowedOpenIds === 'string'
+      ? [...new Set(strings(value.feishuAllowedOpenIds))].join('\n') : prior.feishuAllowedOpenIds
   };
 }
 
