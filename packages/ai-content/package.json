@@ -1,0 +1,26 @@
+{
+  "name": "firekylin-plugin-ai-content",
+  "version": "1.0.0",
+  "description": "AI-assisted summaries, titles, rewriting and translation for Firekylin",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-content"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-content",
+    "entry": "plugin.js",
+    "permissions": ["ai:generate", "credentials:write"]
+  },
+  "files": ["lib", "plugin.js", "README.md"]
+}
