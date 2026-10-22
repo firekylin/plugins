@@ -26,6 +26,7 @@ test('registers google-gemini without exposing stored secrets', async() => {
   };
   await plugin.register(ctx);
   assert.equal(registered.provider.id, 'google-gemini');
+  assert.deepEqual(registered.provider.models.find(model => model.id === 'gemini-3.1-flash-image').capabilities, ['image']);
   assert.deepEqual(registered.provider.admin, {formId: 'settings', testActionId: 'test-connection'});
   assert.equal(Object.hasOwn(await registered.forms.settings.load(), 'apiKey'), false);
   await registered.forms.settings.submit({baseUrl: client.DEFAULT_BASE_URL, modelId: 'model-x'});
@@ -33,6 +34,8 @@ test('registers google-gemini without exposing stored secrets', async() => {
   assert.deepEqual(await registered.actions['test-connection'].handler({model: 'gemini-3-flash-preview'}),
     {message: '连接成功：gemini-3-flash-preview'});
   assert.equal(registered.request.provider, 'google-gemini');
+  await registered.actions['test-connection'].handler({model: 'gemini-3.1-flash-image'});
+  assert.equal(registered.request.model, 'gemini-3-flash-preview');
 });
 
 test('sends google-gemini request with documented protocol', async() => {
@@ -56,4 +59,31 @@ test('sends google-gemini request with documented protocol', async() => {
   assert.equal(result.text, 'OK');
   assert.equal(result.provider, 'google-gemini');
   assert.equal(result.model, 'model-x');
+});
+
+test('generates images and preserves Gemini MIME type and base64 data', async() => {
+  const result = await client.generate({
+    apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
+    request: {model: 'gemini-3.1-flash-image', capability: 'image', messages: [{role: 'user', content: 'Draw a cat'}]},
+    fetchImpl: async(url, init) => {
+      assert.equal(url, client.DEFAULT_BASE_URL + '/models/gemini-3.1-flash-image:generateContent');
+      const body = JSON.parse(init.body);
+      assert.deepEqual(body.contents, [{role: 'user', parts: [{text: 'Draw a cat'}]}]);
+      assert.deepEqual(body.generationConfig, {responseModalities: ['IMAGE']});
+      return {ok: true, json: async() => ({
+        candidates: [{content: {parts: [{inlineData: {mimeType: 'image/png', data: 'aW1hZ2U='}}]}}],
+        usageMetadata: {promptTokenCount: 5, candidatesTokenCount: 8, totalTokenCount: 13}
+      })};
+    }
+  });
+  assert.deepEqual(result.images, [{mimeType: 'image/png', data: 'aW1hZ2U='}]);
+  assert.deepEqual(result.usage, {prompt_tokens: 5, completion_tokens: 8, total_tokens: 13});
+});
+
+test('rejects image requests without image output', async() => {
+  await assert.rejects(client.generate({
+    apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
+    request: {model: 'gemini-3.1-flash-image', capability: 'image', messages: [{role: 'user', content: 'Draw a cat'}]},
+    fetchImpl: async() => ({ok: true, json: async() => ({candidates: [{content: {parts: [{text: 'No image'}]}}]})})
+  }), /returned no image output/);
 });

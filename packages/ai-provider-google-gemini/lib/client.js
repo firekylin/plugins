@@ -17,20 +17,29 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
   const contents = request.messages.filter(message => message.role !== 'system').map(message => ({
     role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}]
   }));
+  const image = request.capability === 'image';
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/models/${encodeURIComponent(request.model)}:generateContent`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
     body: JSON.stringify({
       contents, ...(system ? {systemInstruction: {parts: [{text: system}]}} : {}),
-      generationConfig: {maxOutputTokens: request.maxOutputTokens || 2048}
+      generationConfig: image ? {responseModalities: ['IMAGE']} : {maxOutputTokens: request.maxOutputTokens || 2048}
     })
   });
   if (!response.ok) throw new Error('Google Gemini request failed (HTTP ' + response.status + ')');
   const payload = await response.json();
-  const output = (payload.candidates?.[0]?.content?.parts || [])
+  const parts = payload.candidates?.[0]?.content?.parts || [];
+  const usage = payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount || 0, completion_tokens: payload.usageMetadata.candidatesTokenCount || 0, total_tokens: payload.usageMetadata.totalTokenCount || 0} : undefined;
+  if (image) {
+    const images = parts.filter(part => part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data)
+      .map(part => ({mimeType: part.inlineData.mimeType, data: part.inlineData.data}));
+    if (!images.length) throw new Error('Google Gemini returned no image output');
+    return {images, provider: 'google-gemini', model: request.model, usage};
+  }
+  const output = parts
     .filter(item => typeof item.text === 'string').map(item => item.text).join('\n');
   if (typeof output !== 'string' || !output.trim()) throw new Error('Google Gemini returned no text output');
-  return {text: output, provider: 'google-gemini', model: request.model, usage: payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount || 0, completion_tokens: payload.usageMetadata.candidatesTokenCount || 0, total_tokens: payload.usageMetadata.totalTokenCount || 0} : undefined};
+  return {text: output, provider: 'google-gemini', model: request.model, usage};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};

@@ -4,6 +4,7 @@ const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
   {id: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview', capabilities: ['text']},
+  {id: 'gemini-3.1-flash-image', label: 'gemini-3.1-flash-image', capabilities: ['image']},
   {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
 ];
 
@@ -14,7 +15,7 @@ module.exports = {
     let customModel = await ctx.ai.credentials.get('modelId') || '';
 
     ctx.ai.registerProvider({
-      id: 'google-gemini', label: 'Google Gemini', description: '通过 Gemini generateContent API 使用 Google 文本模型。',
+      id: 'google-gemini', label: 'Google Gemini', description: '通过 Gemini generateContent API 生成文字和图片。',
       logo: 'https://www.google.com/favicon.ico', models: MODELS,
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
@@ -51,8 +52,10 @@ module.exports = {
         const model = input?.model || selected || MODELS[0].id;
         if (!MODELS.some(item => item.id === model)) throw new TypeError('Invalid Google Gemini model');
         if (model === 'custom' && !customModel) throw new TypeError('Custom model ID is required');
+        const testModel = MODELS.find(item => item.id === model).capabilities.includes('text')
+          ? model : MODELS[0].id;
         const result = await ctx.ai.generate({
-          provider: 'google-gemini', model, messages: [{role: 'user', content: 'Reply with OK only.'}],
+          provider: 'google-gemini', model: testModel, messages: [{role: 'user', content: 'Reply with OK only.'}],
           maxOutputTokens: 2048
         });
         return {message: `连接成功：${result.model}`};
