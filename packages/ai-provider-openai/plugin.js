@@ -15,7 +15,10 @@ module.exports = {
     let baseUrl = await ctx.ai.credentials.get('baseUrl') || DEFAULT_BASE_URL;
 
     ctx.ai.registerProvider({
-      id: 'openai', label: 'OpenAI', models: MODELS,
+      id: 'openai', label: 'OpenAI',
+      description: '通过 OpenAI Responses API 使用 GPT 文本生成模型。',
+      logo: 'https://openai.com/favicon.ico',
+      models: MODELS,
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
       generate: async(request, {signal}) => generate({

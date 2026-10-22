@@ -27,6 +27,8 @@ test('registers provider and keeps saved API keys out of admin form values', asy
   };
   await plugin.register(ctx);
   assert.equal(registered.provider.id, 'openai');
+  assert.equal(registered.provider.description, '通过 OpenAI Responses API 使用 GPT 文本生成模型。');
+  assert.equal(registered.provider.logo, 'https://openai.com/favicon.ico');
   assert.deepEqual(registered.provider.admin, {formId: 'settings', testActionId: 'test-connection'});
   assert.equal(registered.page.menu, false);
   assert.deepEqual(await registered.forms.settings.load(), {baseUrl: 'https://api.openai.com/v1'});
