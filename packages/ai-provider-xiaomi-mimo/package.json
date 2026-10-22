@@ -1,0 +1,33 @@
+{
+  "name": "firekylin-plugin-ai-provider-xiaomi-mimo",
+  "version": "1.0.0",
+  "description": "小米 MiMo provider for Firekylin AI services",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-provider-xiaomi-mimo"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-provider-xiaomi-mimo",
+    "entry": "plugin.js",
+    "permissions": [
+      "network:xiaomi-mimo",
+      "credentials:write"
+    ]
+  },
+  "files": [
+    "lib",
+    "plugin.js",
+    "README.md"
+  ]
+}

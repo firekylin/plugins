@@ -8,6 +8,30 @@ importers:
 
   .: {}
 
+  packages/ai-provider-anthropic: {}
+
+  packages/ai-provider-cloudflare: {}
+
+  packages/ai-provider-deepseek: {}
+
+  packages/ai-provider-doubao: {}
+
+  packages/ai-provider-google-gemini: {}
+
+  packages/ai-provider-grok: {}
+
+  packages/ai-provider-kimi: {}
+
+  packages/ai-provider-ollama: {}
+
+  packages/ai-provider-openai: {}
+
+  packages/ai-provider-qianwen: {}
+
+  packages/ai-provider-vercel-ai-gateway: {}
+
+  packages/ai-provider-xiaomi-mimo: {}
+
   packages/backup:
     dependencies:
       croner:
