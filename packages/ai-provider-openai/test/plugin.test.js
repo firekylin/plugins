@@ -16,8 +16,7 @@ test('registers provider and keeps saved API keys out of admin form values', asy
       },
       registerProvider: definition => { registered.provider = definition },
       providers: async() => [{id: 'openai', models: [{id: 'gpt-5-mini', selected: true}]}],
-      select: async(provider, model) => { registered.selection = {provider, model} },
-      generate: async() => ({model: 'gpt-5-mini', text: 'OK'})
+      generate: async request => { registered.testRequest = request; return {model: request.model, text: 'OK'} }
     },
     admin: {
       registerPanel: definition => { registered.panel = definition },
@@ -28,11 +27,11 @@ test('registers provider and keeps saved API keys out of admin form values', asy
   };
   await plugin.register(ctx);
   assert.equal(registered.provider.id, 'openai');
-  assert.deepEqual(await registered.forms.settings.load(), {
-    baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini'
-  });
+  assert.deepEqual(await registered.forms.settings.load(), {baseUrl: 'https://api.openai.com/v1'});
+  assert.equal(await registered.provider.configured(), true);
   assert.equal(Object.hasOwn(await registered.forms.settings.load(), 'apiKey'), false);
-  await registered.forms.settings.submit({baseUrl: 'https://api.openai.com/v1/', model: 'gpt-5-mini'});
+  await registered.forms.settings.submit({baseUrl: 'https://api.openai.com/v1/'});
   assert.equal(credentials.get('apiKey'), 'sk-saved');
-  assert.deepEqual(registered.selection, {provider: 'openai', model: 'gpt-5-mini'});
+  assert.deepEqual(await registered.actions['test-connection'].handler(), {message: '连接成功：gpt-5-mini'});
+  assert.equal(registered.testRequest.model, 'gpt-5-mini');
 });
