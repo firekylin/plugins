@@ -23,8 +23,6 @@ test('registers provider and configures it without returning saved API keys', as
       generate: async request => { registered.testRequest = request; return {model: request.model, text: 'OK'} }
     },
     admin: {
-      registerPanel: definition => { registered.panel = definition },
-      registerPage: definition => { registered.page = definition },
       registerForm: definition => { registered.forms[definition.id] = definition },
       registerAction: definition => { registered.actions[definition.id] = definition }
     }
@@ -34,7 +32,8 @@ test('registers provider and configures it without returning saved API keys', as
   assert.equal(registered.provider.description, '通过 DeepSeek API 使用 DeepSeek 文本生成模型。');
   assert.equal(registered.provider.logo, 'https://www.deepseek.com/favicon.ico');
   assert.deepEqual(registered.provider.admin, {formId: 'settings', testActionId: 'test-connection'});
-  assert.equal(registered.page.menu, false);
+  assert.equal(registered.forms.settings.page, undefined);
+  assert.equal(registered.actions['test-connection'].page, undefined);
   assert.deepEqual(await registered.forms.settings.load(), {baseUrl: 'https://api.deepseek.com'});
   assert.equal(await registered.provider.configured(), true);
   await registered.forms.settings.submit({baseUrl: 'https://api.deepseek.com/'});

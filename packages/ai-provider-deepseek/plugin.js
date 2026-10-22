@@ -24,21 +24,8 @@ module.exports = {
       })
     });
 
-    ctx.admin.registerPanel({id: 'deepseek', title: 'DeepSeek', icon: 'robot', order: 71});
-    ctx.admin.registerPage({
-      id: 'settings', panel: 'deepseek', title: 'DeepSeek 设置', menu: false,
-      description: '请在「AI 连接」页面配置 DeepSeek。',
-      load: async() => ({sections: [
-        {type: 'description', title: '连接状态', items: [
-          {label: 'API Key', value: await ctx.ai.credentials.has('apiKey') ? '已配置' : '未配置'},
-          {label: '接口地址', value: baseUrl}
-        ]},
-        {type: 'form', id: 'settings'},
-        {type: 'actions', ids: ['test-connection']}
-      ]})
-    });
     ctx.admin.registerForm({
-      id: 'settings', page: 'settings', title: 'Provider 设置', submitLabel: '保存',
+      id: 'settings', title: 'Provider 设置', submitLabel: '保存',
       fields: [
         {name: 'apiKey', type: 'password', label: 'API Key', description: '留空则保留已保存的密钥。'},
         {name: 'baseUrl', type: 'url', label: 'API Base URL', required: true}
@@ -53,7 +40,7 @@ module.exports = {
       }
     });
     ctx.admin.registerAction({
-      id: 'test-connection', page: 'settings', label: '测试连接', type: 'primary',
+      id: 'test-connection', label: '测试连接', type: 'primary',
       handler: async input => {
         const providers = await ctx.ai.providers();
         const models = providers.find(provider => provider.id === 'deepseek')?.models || [];
