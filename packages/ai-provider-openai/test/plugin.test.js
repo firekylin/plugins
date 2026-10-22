@@ -27,11 +27,16 @@ test('registers provider and keeps saved API keys out of admin form values', asy
   };
   await plugin.register(ctx);
   assert.equal(registered.provider.id, 'openai');
+  assert.deepEqual(registered.provider.admin, {formId: 'settings', testActionId: 'test-connection'});
+  assert.equal(registered.page.menu, false);
   assert.deepEqual(await registered.forms.settings.load(), {baseUrl: 'https://api.openai.com/v1'});
   assert.equal(await registered.provider.configured(), true);
   assert.equal(Object.hasOwn(await registered.forms.settings.load(), 'apiKey'), false);
   await registered.forms.settings.submit({baseUrl: 'https://api.openai.com/v1/'});
   assert.equal(credentials.get('apiKey'), 'sk-saved');
-  assert.deepEqual(await registered.actions['test-connection'].handler(), {message: '连接成功：gpt-5-mini'});
-  assert.equal(registered.testRequest.model, 'gpt-5-mini');
+  assert.deepEqual(await registered.actions['test-connection'].handler({model: 'gpt-5-nano'}),
+    {message: '连接成功：gpt-5-nano'});
+  assert.equal(registered.testRequest.model, 'gpt-5-nano');
+  await assert.rejects(() => registered.actions['test-connection'].handler({model: 'invalid'}),
+    /Invalid OpenAI model/);
 });
