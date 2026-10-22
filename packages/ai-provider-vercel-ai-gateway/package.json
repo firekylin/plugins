@@ -1,0 +1,33 @@
+{
+  "name": "firekylin-plugin-ai-provider-vercel-ai-gateway",
+  "version": "1.0.0",
+  "description": "Vercel AI Gateway provider for Firekylin AI services",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-provider-vercel-ai-gateway"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-provider-vercel-ai-gateway",
+    "entry": "plugin.js",
+    "permissions": [
+      "network:vercel-ai-gateway",
+      "credentials:write"
+    ]
+  },
+  "files": [
+    "lib",
+    "plugin.js",
+    "README.md"
+  ]
+}

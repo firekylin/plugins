@@ -1,0 +1,33 @@
+{
+  "name": "firekylin-plugin-ai-provider-kimi",
+  "version": "1.0.0",
+  "description": "Kimi provider for Firekylin AI services",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-provider-kimi"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-provider-kimi",
+    "entry": "plugin.js",
+    "permissions": [
+      "network:kimi",
+      "credentials:write"
+    ]
+  },
+  "files": [
+    "lib",
+    "plugin.js",
+    "README.md"
+  ]
+}

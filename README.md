@@ -10,6 +10,17 @@ packages through `pnpm-workspace.yaml`.
 
 ## Available plugins
 
+- AI providers (install independently):
+  [`Anthropic`](packages/ai-provider-anthropic),
+  [`Google Gemini`](packages/ai-provider-google-gemini),
+  [`Grok`](packages/ai-provider-grok),
+  [`Vercel AI Gateway`](packages/ai-provider-vercel-ai-gateway),
+  [`Ollama`](packages/ai-provider-ollama),
+  [`QianWen`](packages/ai-provider-qianwen),
+  [`Kimi`](packages/ai-provider-kimi),
+  [`Cloudflare Workers AI`](packages/ai-provider-cloudflare),
+  [`Xiaomi MiMo`](packages/ai-provider-xiaomi-mimo), and
+  [`Doubao`](packages/ai-provider-doubao).
 - [`firekylin-plugin-backup`](packages/backup): create manual or scheduled SQL backups and save them locally, send them by email, or both.
 - [`firekylin-plugin-comment-import`](packages/comment-import): import comments from Waline, Valine,
   Artalk, Twikoo, Gitalk, Giscus, and Commento.
