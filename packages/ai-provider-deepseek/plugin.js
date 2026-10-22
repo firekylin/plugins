@@ -14,6 +14,7 @@ module.exports = {
 
     ctx.ai.registerProvider({
       id: 'deepseek', label: 'DeepSeek', models: MODELS,
+      configured: () => ctx.ai.credentials.has('apiKey'),
       generate: async(request, {signal}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal
       })
@@ -21,7 +22,7 @@ module.exports = {
 
     ctx.admin.registerPanel({id: 'deepseek', title: 'DeepSeek', icon: 'robot', order: 71});
     ctx.admin.registerPage({
-      id: 'settings', panel: 'deepseek', title: 'DeepSeek 设置', description: '配置 DeepSeek 连接和默认模型。',
+      id: 'settings', panel: 'deepseek', title: 'DeepSeek 设置', description: '配置 DeepSeek 连接；默认模型请在「AI 服务」中选择。',
       load: async() => ({sections: [
         {type: 'description', title: '连接状态', items: [
           {label: 'API Key', value: await ctx.ai.credentials.has('apiKey') ? '已配置' : '未配置'},
@@ -35,18 +36,11 @@ module.exports = {
       id: 'settings', page: 'settings', title: 'Provider 设置', submitLabel: '保存',
       fields: [
         {name: 'apiKey', type: 'password', label: 'API Key', description: '留空则保留已保存的密钥。'},
-        {name: 'baseUrl', type: 'url', label: 'API Base URL', required: true},
-        {name: 'model', type: 'select', label: '默认模型', required: true,
-          options: MODELS.map(model => ({label: model.label, value: model.id}))}
+        {name: 'baseUrl', type: 'url', label: 'API Base URL', required: true}
       ],
-      load: async() => {
-        const providers = await ctx.ai.providers();
-        const models = providers.find(provider => provider.id === 'deepseek')?.models || [];
-        return {baseUrl, model: models.find(model => model.selected)?.id || MODELS[0].id};
-      },
+      load: async() => ({baseUrl}),
       submit: async values => {
         const nextBaseUrl = normalizeBaseUrl(String(values.baseUrl || DEFAULT_BASE_URL));
-        await ctx.ai.select('deepseek', String(values.model));
         if (values.apiKey) await ctx.ai.credentials.set('apiKey', String(values.apiKey));
         await ctx.ai.credentials.set('baseUrl', nextBaseUrl);
         baseUrl = nextBaseUrl;
