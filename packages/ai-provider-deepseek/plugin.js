@@ -13,7 +13,10 @@ module.exports = {
     let baseUrl = await ctx.ai.credentials.get('baseUrl') || DEFAULT_BASE_URL;
 
     ctx.ai.registerProvider({
-      id: 'deepseek', label: 'DeepSeek', models: MODELS,
+      id: 'deepseek', label: 'DeepSeek',
+      description: '通过 DeepSeek API 使用 DeepSeek 文本生成模型。',
+      logo: 'https://www.deepseek.com/favicon.ico',
+      models: MODELS,
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
       generate: async(request, {signal}) => generate({

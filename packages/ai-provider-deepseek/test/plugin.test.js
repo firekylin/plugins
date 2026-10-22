@@ -31,6 +31,8 @@ test('registers provider and configures it without returning saved API keys', as
   };
   await plugin.register(ctx);
   assert.equal(registered.provider.id, 'deepseek');
+  assert.equal(registered.provider.description, '通过 DeepSeek API 使用 DeepSeek 文本生成模型。');
+  assert.equal(registered.provider.logo, 'https://www.deepseek.com/favicon.ico');
   assert.deepEqual(registered.provider.admin, {formId: 'settings', testActionId: 'test-connection'});
   assert.equal(registered.page.menu, false);
   assert.deepEqual(await registered.forms.settings.load(), {baseUrl: 'https://api.deepseek.com'});
