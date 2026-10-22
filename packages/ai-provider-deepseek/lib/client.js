@@ -18,6 +18,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       model: request.model,
       messages: request.messages.map(message => ({role: message.role, content: message.content})),
       stream: false,
+      ...(request.disableThinking === true ? {thinking: {type: 'disabled'}} : {}),
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
     })
   });

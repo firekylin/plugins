@@ -40,6 +40,19 @@ test('does not leak provider response bodies on HTTP failures', async() => {
   }), error => error.message === 'DeepSeek request failed (HTTP 401)');
 });
 
+test('disables thinking only for the connection probe', async() => {
+  let body;
+  await generate({apiKey: 'test-secret', request: {
+    model: 'deepseek-flash', messages: [{role: 'user', content: 'Reply with OK only.'}],
+    disableThinking: true, maxOutputTokens: 32
+  }, fetchImpl: async(_url, options) => {
+    body = JSON.parse(options.body);
+    return {ok: true, json: async() => ({choices: [{message: {content: 'OK'}}]})};
+  }});
+  assert.deepEqual(body.thinking, {type: 'disabled'});
+  assert.equal(body.max_tokens, 32);
+});
+
 test('rejects empty completions', async() => {
   await assert.rejects(() => generate({
     apiKey: 'test-secret', request: {model: 'deepseek-flash', messages: []},

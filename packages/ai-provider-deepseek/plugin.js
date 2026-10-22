@@ -59,7 +59,8 @@ module.exports = {
         const model = requested || models.find(item => item.selected)?.id || MODELS[0].id;
         const result = await ctx.ai.generate({
           provider: 'deepseek', model,
-          messages: [{role: 'user', content: 'Reply with OK only.'}], maxOutputTokens: 16
+          messages: [{role: 'user', content: 'Reply with OK only.'}],
+          disableThinking: true, maxOutputTokens: 32
         });
         return {message: `连接成功：${result.model}`};
       }

@@ -42,6 +42,8 @@ test('registers provider and configures it without returning saved API keys', as
     {message: '连接成功：deepseek-flash'});
   assert.equal(registered.testRequest.provider, 'deepseek');
   assert.equal(registered.testRequest.model, 'deepseek-flash');
+  assert.equal(registered.testRequest.disableThinking, true);
+  assert.equal(registered.testRequest.maxOutputTokens, 32);
   await assert.rejects(() => registered.actions['test-connection'].handler({model: 'invalid'}),
     /Invalid DeepSeek model/);
 });
