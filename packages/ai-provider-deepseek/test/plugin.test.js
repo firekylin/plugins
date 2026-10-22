@@ -20,7 +20,7 @@ test('registers provider and configures it without returning saved API keys', as
       },
       registerProvider: definition => { registered.provider = definition },
       providers: async() => [{id: 'deepseek', models: [{id: 'deepseek-v4-pro', selected: true}]}],
-      generate: async request => { registered.testRequest = request; return {model: 'deepseek-v4-pro', text: 'OK'} }
+      generate: async request => { registered.testRequest = request; return {model: request.model, text: 'OK'} }
     },
     admin: {
       registerPanel: definition => { registered.panel = definition },
@@ -31,12 +31,17 @@ test('registers provider and configures it without returning saved API keys', as
   };
   await plugin.register(ctx);
   assert.equal(registered.provider.id, 'deepseek');
+  assert.deepEqual(registered.provider.admin, {formId: 'settings', testActionId: 'test-connection'});
+  assert.equal(registered.page.menu, false);
   assert.deepEqual(await registered.forms.settings.load(), {baseUrl: 'https://api.deepseek.com'});
   assert.equal(await registered.provider.configured(), true);
   await registered.forms.settings.submit({baseUrl: 'https://api.deepseek.com/'});
   assert.equal(credentials.get('apiKey'), 'saved-secret');
   assert.equal(credentials.get('baseUrl'), 'https://api.deepseek.com');
-  assert.deepEqual(await registered.actions['test-connection'].handler(), {message: '连接成功：deepseek-v4-pro'});
+  assert.deepEqual(await registered.actions['test-connection'].handler({model: 'deepseek-flash'}),
+    {message: '连接成功：deepseek-flash'});
   assert.equal(registered.testRequest.provider, 'deepseek');
-  assert.equal(registered.testRequest.model, 'deepseek-v4-pro');
+  assert.equal(registered.testRequest.model, 'deepseek-flash');
+  await assert.rejects(() => registered.actions['test-connection'].handler({model: 'invalid'}),
+    /Invalid DeepSeek model/);
 });

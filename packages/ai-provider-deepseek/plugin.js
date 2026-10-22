@@ -14,6 +14,7 @@ module.exports = {
 
     ctx.ai.registerProvider({
       id: 'deepseek', label: 'DeepSeek', models: MODELS,
+      admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
       generate: async(request, {signal}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal
@@ -22,7 +23,8 @@ module.exports = {
 
     ctx.admin.registerPanel({id: 'deepseek', title: 'DeepSeek', icon: 'robot', order: 71});
     ctx.admin.registerPage({
-      id: 'settings', panel: 'deepseek', title: 'DeepSeek 设置', description: '配置 DeepSeek 连接；默认模型请在「AI 服务」中选择。',
+      id: 'settings', panel: 'deepseek', title: 'DeepSeek 设置', menu: false,
+      description: '请在「AI 连接」页面配置 DeepSeek。',
       load: async() => ({sections: [
         {type: 'description', title: '连接状态', items: [
           {label: 'API Key', value: await ctx.ai.credentials.has('apiKey') ? '已配置' : '未配置'},
@@ -49,10 +51,12 @@ module.exports = {
     });
     ctx.admin.registerAction({
       id: 'test-connection', page: 'settings', label: '测试连接', type: 'primary',
-      handler: async() => {
+      handler: async input => {
         const providers = await ctx.ai.providers();
         const models = providers.find(provider => provider.id === 'deepseek')?.models || [];
-        const model = models.find(item => item.selected)?.id || MODELS[0].id;
+        const requested = input && input.model;
+        if (requested && !MODELS.some(item => item.id === requested)) throw new TypeError('Invalid DeepSeek model');
+        const model = requested || models.find(item => item.selected)?.id || MODELS[0].id;
         const result = await ctx.ai.generate({
           provider: 'deepseek', model,
           messages: [{role: 'user', content: 'Reply with OK only.'}], maxOutputTokens: 16
