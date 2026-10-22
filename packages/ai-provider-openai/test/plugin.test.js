@@ -37,6 +37,11 @@ test('registers provider and keeps saved API keys out of admin form values', asy
   assert.deepEqual(await registered.actions['test-connection'].handler({model: 'gpt-5-nano'}),
     {message: '连接成功：gpt-5-nano'});
   assert.equal(registered.testRequest.model, 'gpt-5-nano');
+  assert.equal(registered.testRequest.reasoningEffort, 'low');
+  assert.equal(registered.testRequest.maxOutputTokens, 512);
+  await registered.actions['test-connection'].handler({model: 'gpt-4.1'});
+  assert.equal(registered.testRequest.reasoningEffort, undefined);
+  assert.equal(registered.testRequest.maxOutputTokens, 32);
   await assert.rejects(() => registered.actions['test-connection'].handler({model: 'invalid'}),
     /Invalid OpenAI model/);
 });

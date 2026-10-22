@@ -24,6 +24,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
     body: JSON.stringify({
       model: request.model,
       input: request.messages.map(message => ({role: message.role, content: message.content})),
+      ...(request.reasoningEffort ? {reasoning: {effort: request.reasoningEffort}} : {}),
       ...(request.maxOutputTokens ? {max_output_tokens: request.maxOutputTokens} : {})
     })
   });

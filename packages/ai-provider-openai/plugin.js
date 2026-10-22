@@ -58,9 +58,12 @@ module.exports = {
         const requested = input && input.model;
         if (requested && !MODELS.some(item => item.id === requested)) throw new TypeError('Invalid OpenAI model');
         const model = requested || models.find(item => item.selected)?.id || MODELS[0].id;
+        const reasoningModel = model !== 'gpt-4.1';
         const result = await ctx.ai.generate({
           provider: 'openai', model,
-          messages: [{role: 'user', content: 'Reply with OK only.'}], maxOutputTokens: 8
+          messages: [{role: 'user', content: 'Reply with OK only.'}],
+          ...(reasoningModel ? {reasoningEffort: 'low'} : {}),
+          maxOutputTokens: reasoningModel ? 512 : 32
         });
         return {message: `连接成功：${result.model}`};
       }

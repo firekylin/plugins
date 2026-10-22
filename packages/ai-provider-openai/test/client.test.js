@@ -35,3 +35,16 @@ test('turns provider errors into bounded failures', async() => {
     fetchImpl: async() => ({ok: false, status: 401, json: async() => ({error: {message: 'bad key'}})})
   }), /OpenAI request failed: bad key/);
 });
+
+test('sends a bounded low-effort reasoning probe when requested', async() => {
+  let body;
+  await generate({apiKey: 'sk-test', request: {
+    model: 'gpt-5-mini', messages: [{role: 'user', content: 'Reply with OK only.'}],
+    reasoningEffort: 'low', maxOutputTokens: 512
+  }, fetchImpl: async(_url, options) => {
+    body = JSON.parse(options.body);
+    return {ok: true, json: async() => ({output_text: 'OK'})};
+  }});
+  assert.deepEqual(body.reasoning, {effort: 'low'});
+  assert.equal(body.max_output_tokens, 512);
+});
