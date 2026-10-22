@@ -50,6 +50,7 @@ test('sends ollama request with documented protocol', async() => {
     fetchImpl: async(url, init) => {
       assert.equal(url, client.DEFAULT_BASE_URL + '/api/chat');
       assert.equal(init.method, 'POST');
+      assert.equal(Object.hasOwn(JSON.parse(init.body), 'options'), false);
 
       return {ok: true, json: async() => ({message: {content: 'OK'}, prompt_eval_count: 1, eval_count: 1})};
     }
@@ -58,4 +59,15 @@ test('sends ollama request with documented protocol', async() => {
   assert.equal(result.provider, 'ollama');
   assert.equal(result.model, 'model-x');
   assert.throws(() => client.normalizeBaseUrl('http://example.com:11434'), /HTTPS or a loopback/);
+});
+
+test('forwards maxOutputTokens as Ollama options.num_predict', async() => {
+  await client.generate({
+    baseUrl: client.DEFAULT_BASE_URL,
+    request: {model: 'model-x', messages: [{role: 'user', content: 'Hello'}], maxOutputTokens: 8},
+    fetchImpl: async(_url, init) => {
+      assert.deepEqual(JSON.parse(init.body).options, {num_predict: 8});
+      return {ok: true, json: async() => ({message: {content: 'OK'}})};
+    }
+  });
 });

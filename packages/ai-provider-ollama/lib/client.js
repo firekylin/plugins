@@ -20,7 +20,8 @@ async function generate({baseUrl, request, signal, fetchImpl = fetch}) {
     body: JSON.stringify({
       model: request.model, messages: request.messages.map(message => ({
         role: message.role, content: message.content
-      })), stream: false
+      })), stream: false,
+      ...(request.maxOutputTokens ? {options: {num_predict: request.maxOutputTokens}} : {})
     })
   });
   if (!response.ok) throw new Error('Ollama request failed (HTTP ' + response.status + ')');
