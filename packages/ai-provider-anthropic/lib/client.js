@@ -10,7 +10,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('Anthropic API key is not configured');
   if (!request.model) throw new TypeError('Anthropic model ID is required');
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
@@ -25,8 +25,10 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       ...(system ? {system} : {})
     })
   });
+  reportUsage(undefined, response);
   if (!response.ok) throw new Error('Anthropic request failed (HTTP ' + response.status + ')');
   const payload = await response.json();
+  reportUsage(payload.usage, response);
   const output = (payload.content || []).filter(item => item.type === 'text' && typeof item.text === 'string')
     .map(item => item.text).join('\n');
   if (typeof output !== 'string' || !output.trim()) throw new Error('Anthropic returned no text output');

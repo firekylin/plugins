@@ -41,3 +41,23 @@ Publish each new package manually once with `npm publish --access public`. Then
 configure its trusted publisher on npm with the GitHub organization
 `firekylin`, repository `plugins`, and workflow filename `publish.yml`. No npm
 access token is stored in GitHub.
+
+## AI usage metadata
+
+Providers declare `usageAdapter` when registering: a standard protocol (`chat-completions` or
+`responses`) plus optional native field overrides. Selectors support dotted paths, ordered fallback
+paths, and sums with explicit defaults for optional native counters. Only Anthropic, Gemini, Ollama
+and DeepSeek need custom mappings.
+
+The core supplies `reportUsage(rawUsage, response)` in the generation context. Clients report headers
+once available, then native usage after parsing the response, before checking for empty output.
+Core immediately extracts declared counters and the request ID; it never retains the full response.
+Core owns normalization, missing/zero handling, safe total derivation, and audit persistence. Provider
+results keep their original `usage` shape; the core adds normalized `usageDetails` to successful results.
+Failures keep their original errors while already reported usage remains available to the audit log.
+
+There is no shared utility npm package or additional publishing dependency. Older cores may omit the
+reporting callback; clients still generate normally, but normalized audit metadata requires the updated core.
+Provider contracts are covered by `test/ai-provider-usage.test.js`; normalization is tested in core.
+Set `FIREKYLIN_CORE_PATH` to a local core checkout when running that contract suite to additionally
+verify all provider declarations against the actual core normalizer.

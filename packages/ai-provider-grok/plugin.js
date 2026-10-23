@@ -18,11 +18,12 @@ module.exports = {
       description: '通过 xAI API 使用 Grok 文本模型。',
       logo: 'https://x.ai/favicon.ico',
       models: MODELS,
+      usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal}) => generate({
+      generate: async(request, {signal, reportUsage}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
       })
     });
 

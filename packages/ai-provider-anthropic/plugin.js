@@ -16,11 +16,18 @@ module.exports = {
     ctx.ai.registerProvider({
       id: 'anthropic', label: 'Anthropic', description: '通过 Claude Messages API 使用 Anthropic 文本模型。',
       logo: 'https://www.anthropic.com/favicon.ico', models: MODELS,
+      usageAdapter: {fields: {
+        // Native input excludes cache creation and reads.
+        inputTokens: {sum: ['input_tokens', {field: 'cache_creation_input_tokens', default: 0},
+          {field: 'cache_read_input_tokens', default: 0}]},
+        outputTokens: 'output_tokens', totalTokens: 'total_tokens',
+        cacheReadTokens: 'cache_read_input_tokens', cacheWriteTokens: 'cache_creation_input_tokens'
+      }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal}) => generate({
+      generate: async(request, {signal, reportUsage}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
       })
     });
     ctx.admin.registerForm({

@@ -16,7 +16,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
@@ -28,7 +28,9 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       ...(request.maxOutputTokens ? {max_output_tokens: request.maxOutputTokens} : {})
     })
   });
+  reportUsage(undefined, response);
   const payload = await response.json().catch(() => ({}));
+  reportUsage(payload.usage, response);
   if (!response.ok) {
     const message = payload.error && payload.error.message ? payload.error.message : `HTTP ${response.status}`;
     throw new Error(`OpenAI request failed: ${message}`);

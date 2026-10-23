@@ -59,7 +59,7 @@ test('sends a non-streaming chat request and normalizes its response', async() =
       return {ok: true, json: async() => ({choices: [{message: {content: 'OK'}}], usage: {total_tokens: 2}})};
     }
   });
-  assert.deepEqual(result, {text: 'OK', provider: 'xiaomi-mimo', model: 'mimo-v2.6-pro',
+  assert.deepEqual((({usageDetails, providerRequestId, ...legacy}) => legacy)(result), {text: 'OK', provider: 'xiaomi-mimo', model: 'mimo-v2.6-pro',
     usage: {total_tokens: 2}});
   await assert.rejects(() => client.generate({request: {model: 'x', messages: []}}), /key is not configured/);
   assert.throws(() => client.normalizeBaseUrl('http://example.com/v1'), /HTTPS/);

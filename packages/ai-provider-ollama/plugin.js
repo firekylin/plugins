@@ -12,10 +12,11 @@ module.exports = {
       id: 'ollama', label: 'Ollama', description: '通过本地或自托管 Ollama API 使用文本模型。',
       logo: 'https://ollama.com/favicon.ico',
       models: [{id: 'local', label: '已配置的 Ollama 模型', capabilities: ['text']}],
+      usageAdapter: {fields: {inputTokens: 'prompt_eval_count', outputTokens: 'eval_count'}},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => Boolean(modelId),
-      generate: async(request, {signal}) => generate({
-        baseUrl, request: {...request, model: modelId}, signal
+      generate: async(request, {signal, reportUsage}) => generate({
+        baseUrl, request: {...request, model: modelId}, signal, reportUsage
       })
     });
     ctx.admin.registerForm({

@@ -17,11 +17,17 @@ module.exports = {
     ctx.ai.registerProvider({
       id: 'google-gemini', label: 'Google Gemini', description: '通过 Gemini generateContent API 生成文字和图片。',
       logo: 'https://www.google.com/favicon.ico', models: MODELS,
+      usageAdapter: {fields: {
+        inputTokens: 'promptTokenCount',
+        // Candidate tokens exclude thoughts; the native total already includes them.
+        outputTokens: {sum: ['candidatesTokenCount', {field: 'thoughtsTokenCount', default: 0}]},
+        totalTokens: 'totalTokenCount', cacheReadTokens: 'cachedContentTokenCount', reasoningTokens: 'thoughtsTokenCount'
+      }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal}) => generate({
+      generate: async(request, {signal, reportUsage}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
       })
     });
     ctx.admin.registerForm({

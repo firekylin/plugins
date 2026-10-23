@@ -10,7 +10,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('Google Gemini API key is not configured');
   if (!request.model) throw new TypeError('Google Gemini model ID is required');
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
@@ -26,10 +26,12 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       generationConfig: image ? {responseModalities: ['IMAGE']} : {maxOutputTokens: request.maxOutputTokens || 2048}
     })
   });
+  reportUsage(undefined, response);
   if (!response.ok) throw new Error('Google Gemini request failed (HTTP ' + response.status + ')');
   const payload = await response.json();
+  reportUsage(payload.usageMetadata, response);
   const parts = payload.candidates?.[0]?.content?.parts || [];
-  const usage = payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount || 0, completion_tokens: payload.usageMetadata.candidatesTokenCount || 0, total_tokens: payload.usageMetadata.totalTokenCount || 0} : undefined;
+  const usage = payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount ?? null, completion_tokens: payload.usageMetadata.candidatesTokenCount ?? null, total_tokens: payload.usageMetadata.totalTokenCount ?? null} : undefined;
   if (image) {
     const images = parts.filter(part => part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data)
       .map(part => ({mimeType: part.inlineData.mimeType, data: part.inlineData.data}));
