@@ -41,3 +41,17 @@ Publish each new package manually once with `npm publish --access public`. Then
 configure its trusted publisher on npm with the GitHub organization
 `firekylin`, repository `plugins`, and workflow filename `publish.yml`. No npm
 access token is stored in GitHub.
+
+## AI usage metadata
+
+Provider results preserve their native `usage` property and additionally return `usageDetails` with
+input/output/total tokens plus available cache-read, cache-write and reasoning counts. Missing values
+are `null`; a reported zero stays zero. Totals are derived only when both input and output are known.
+Cache and reasoning detail fields are not added twice. Anthropic input includes its separate cache
+counts; Gemini output includes candidates and reported thought tokens. Gemini and Ollama no longer
+fill missing usage with zero.
+
+When upstream request-ID headers are available, `providerRequestId` is included in results or errors.
+No full HTTP responses or headers are attached for auditing. Core owns audit storage and authenticated
+caller attribution; these plugins only map provider-specific metadata. Helpers ship in each package's
+`lib` directory so providers remain independently installable. No pricing or fee estimation is added.

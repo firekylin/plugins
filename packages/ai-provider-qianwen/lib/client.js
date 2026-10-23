@@ -1,4 +1,5 @@
 'use strict';
+const {metadata, failure} = require('./usage');
 
 const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
@@ -23,11 +24,11 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
     })
   });
-  if (!response.ok) throw new Error('通义千问 request failed (HTTP ' + response.status + ')');
+  if (!response.ok) throw failure('通义千问 request failed (HTTP ' + response.status + ')', response);
   const payload = await response.json();
   const output = payload.choices?.[0]?.message?.content;
-  if (typeof output !== 'string' || !output.trim()) throw new Error('通义千问 returned no text output');
-  return {text: output, provider: 'qianwen', model: request.model, usage: payload.usage || undefined};
+  if (typeof output !== 'string' || !output.trim()) throw failure('通义千问 returned no text output', response, payload.usage);
+  return {text: output, provider: 'qianwen', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response)};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};

@@ -1,4 +1,5 @@
 'use strict';
+const {metadata, failure} = require('./usage');
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com';
 
@@ -22,11 +23,11 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
     })
   });
-  if (!response.ok) throw new Error(`DeepSeek request failed (HTTP ${response.status})`);
+  if (!response.ok) throw failure(`DeepSeek request failed (HTTP ${response.status})`, response);
   const payload = await response.json();
   const output = payload.choices?.[0]?.message?.content;
-  if (typeof output !== 'string' || !output.trim()) throw new Error('DeepSeek returned no text output');
-  return {text: output, provider: 'deepseek', model: request.model, usage: payload.usage || undefined};
+  if (typeof output !== 'string' || !output.trim()) throw failure('DeepSeek returned no text output', response, payload.usage);
+  return {text: output, provider: 'deepseek', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response)};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};

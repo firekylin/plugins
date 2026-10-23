@@ -1,4 +1,5 @@
 'use strict';
+const {metadata, failure} = require('./usage');
 
 function baseUrl(accountId) {
   if (!/^[a-f0-9]{32}$/i.test(accountId || '')) throw new TypeError('Cloudflare Account ID is required');
@@ -18,11 +19,11 @@ async function generate({apiKey, accountId, request, signal, fetchImpl = fetch})
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
     })
   });
-  if (!response.ok) throw new Error('Cloudflare request failed (HTTP ' + response.status + ')');
+  if (!response.ok) throw failure('Cloudflare request failed (HTTP ' + response.status + ')', response);
   const payload = await response.json();
   const output = payload.choices?.[0]?.message?.content;
-  if (typeof output !== 'string' || !output.trim()) throw new Error('Cloudflare returned no text output');
-  return {text: output, provider: 'cloudflare', model: request.model, usage: payload.usage || undefined};
+  if (typeof output !== 'string' || !output.trim()) throw failure('Cloudflare returned no text output', response, payload.usage);
+  return {text: output, provider: 'cloudflare', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response)};
 }
 
 module.exports = {baseUrl, generate};

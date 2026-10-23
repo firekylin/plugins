@@ -29,7 +29,7 @@ test('calls DeepSeek Chat Completions with core request fields', async() => {
   assert.deepEqual(JSON.parse(received.options.body), {
     model: 'deepseek-flash', messages: [{role: 'user', content: 'Hello'}], stream: false, max_tokens: 20
   });
-  assert.deepEqual(result, {text: 'Hi', provider: 'deepseek', model: 'deepseek-flash', usage: {total_tokens: 3}});
+  assert.deepEqual((({usageDetails, providerRequestId, ...legacy}) => legacy)(result), {text: 'Hi', provider: 'deepseek', model: 'deepseek-flash', usage: {total_tokens: 3}});
   assert.doesNotMatch(JSON.stringify(result), /test-secret/);
 });
 

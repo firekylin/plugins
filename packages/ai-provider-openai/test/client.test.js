@@ -25,7 +25,7 @@ test('calls the Responses API without exposing credentials in results', async() 
   });
   assert.equal(received.url, 'https://api.openai.com/v1/responses');
   assert.equal(received.options.headers.Authorization, 'Bearer sk-test');
-  assert.deepEqual(result, {text: 'Hi', provider: 'openai', model: 'gpt-5-mini', usage: {total_tokens: 2}});
+  assert.deepEqual((({usageDetails, providerRequestId, ...legacy}) => legacy)(result), {text: 'Hi', provider: 'openai', model: 'gpt-5-mini', usage: {total_tokens: 2}});
   assert.doesNotMatch(JSON.stringify(result), /sk-test/);
 });
 

@@ -1,4 +1,5 @@
 'use strict';
+const {metadata, failure} = require('./usage');
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
@@ -31,11 +32,11 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = payload.error && payload.error.message ? payload.error.message : `HTTP ${response.status}`;
-    throw new Error(`OpenAI request failed: ${message}`);
+    throw failure(`OpenAI request failed: ${message}`, response);
   }
   const text = outputText(payload);
-  if (!text) throw new Error('OpenAI returned no text output');
-  return {text, provider: 'openai', model: request.model, usage: payload.usage || undefined};
+  if (!text) throw failure('OpenAI returned no text output', response, payload.usage);
+  return {text, provider: 'openai', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response)};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, outputText, generate};

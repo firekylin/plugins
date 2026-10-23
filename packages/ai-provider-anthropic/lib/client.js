@@ -1,4 +1,5 @@
 'use strict';
+const {metadata, failure} = require('./usage');
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com/v1';
 
@@ -25,12 +26,12 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       ...(system ? {system} : {})
     })
   });
-  if (!response.ok) throw new Error('Anthropic request failed (HTTP ' + response.status + ')');
+  if (!response.ok) throw failure('Anthropic request failed (HTTP ' + response.status + ')', response);
   const payload = await response.json();
   const output = (payload.content || []).filter(item => item.type === 'text' && typeof item.text === 'string')
     .map(item => item.text).join('\n');
-  if (typeof output !== 'string' || !output.trim()) throw new Error('Anthropic returned no text output');
-  return {text: output, provider: 'anthropic', model: request.model, usage: payload.usage || undefined};
+  if (typeof output !== 'string' || !output.trim()) throw failure('Anthropic returned no text output', response, payload.usage, 'anthropic');
+  return {text: output, provider: 'anthropic', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response, 'anthropic')};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};
