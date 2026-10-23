@@ -29,5 +29,8 @@
     "lib",
     "plugin.js",
     "README.md"
-  ]
+  ],
+  "dependencies": {
+    "firekylin-ai-provider-utils": "^1.0.0"
+  }
 }

@@ -30,8 +30,8 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
   const payload = await response.json();
   const output = (payload.content || []).filter(item => item.type === 'text' && typeof item.text === 'string')
     .map(item => item.text).join('\n');
-  if (typeof output !== 'string' || !output.trim()) throw failure('Anthropic returned no text output', response, payload.usage, 'anthropic');
-  return {text: output, provider: 'anthropic', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response, 'anthropic')};
+  if (typeof output !== 'string' || !output.trim()) throw failure('Anthropic returned no text output', response, payload.usage);
+  return {text: output, provider: 'anthropic', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response)};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};

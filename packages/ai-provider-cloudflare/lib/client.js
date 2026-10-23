@@ -1,5 +1,5 @@
 'use strict';
-const {metadata, failure} = require('./usage');
+const {chatUsage: {metadata, failure}} = require('firekylin-ai-provider-utils');
 
 function baseUrl(accountId) {
   if (!/^[a-f0-9]{32}$/i.test(accountId || '')) throw new TypeError('Cloudflare Account ID is required');

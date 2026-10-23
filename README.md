@@ -53,5 +53,17 @@ fill missing usage with zero.
 
 When upstream request-ID headers are available, `providerRequestId` is included in results or errors.
 No full HTTP responses or headers are attached for auditing. Core owns audit storage and authenticated
-caller attribution; these plugins only map provider-specific metadata. Helpers ship in each package's
-`lib` directory so providers remain independently installable. No pricing or fee estimation is added.
+caller attribution; these plugins only map provider-specific metadata. The shared
+[`firekylin-ai-provider-utils`](packages/ai-provider-utils) package owns validation, unknown/zero handling,
+total derivation and request-ID/error metadata. Standard protocol providers import its ready-made adapters;
+only Anthropic, Gemini, Ollama and DeepSeek declare native field differences. No vendor-switch logic is
+shipped inside providers. No pricing or fee estimation is added.
+
+Provider dependencies use normal npm semver ranges. The workspace links these locally for development;
+published packages resolve the shared utility normally, without reaching into a sibling plugin directory.
+Publish the new utility package before releasing provider versions that depend on it, following the
+repository's first-publication/trusted-publisher setup above. This change does not publish packages.
+
+Run `npm test` at the repository root for the shared cross-provider contract suite plus all package tests.
+Generic normalization tests live only in the shared package; provider field contracts are table-driven in
+`test/ai-provider-usage.test.js`.

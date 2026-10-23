@@ -8,29 +8,79 @@ importers:
 
   .: {}
 
-  packages/ai-provider-anthropic: {}
+  packages/ai-provider-anthropic:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-cloudflare: {}
+  packages/ai-provider-cloudflare:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-deepseek: {}
+  packages/ai-provider-deepseek:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-doubao: {}
+  packages/ai-provider-doubao:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-google-gemini: {}
+  packages/ai-provider-google-gemini:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-grok: {}
+  packages/ai-provider-grok:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-kimi: {}
+  packages/ai-provider-kimi:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-ollama: {}
+  packages/ai-provider-ollama:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-openai: {}
+  packages/ai-provider-openai:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-qianwen: {}
+  packages/ai-provider-qianwen:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
-  packages/ai-provider-vercel-ai-gateway: {}
+  packages/ai-provider-utils: {}
 
-  packages/ai-provider-xiaomi-mimo: {}
+  packages/ai-provider-vercel-ai-gateway:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
+
+  packages/ai-provider-xiaomi-mimo:
+    dependencies:
+      firekylin-ai-provider-utils:
+        specifier: ^1.0.0
+        version: link:../ai-provider-utils
 
   packages/backup:
     dependencies:

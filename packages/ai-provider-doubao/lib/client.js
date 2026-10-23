@@ -1,5 +1,5 @@
 'use strict';
-const {metadata, failure} = require('./usage');
+const {chatUsage: {metadata, failure}} = require('firekylin-ai-provider-utils');
 
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 

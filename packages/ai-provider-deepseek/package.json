@@ -22,5 +22,8 @@
     "entry": "plugin.js",
     "permissions": ["network:deepseek", "credentials:write"]
   },
-  "files": ["lib", "plugin.js", "README.md"]
+  "files": ["lib", "plugin.js", "README.md"],
+  "dependencies": {
+    "firekylin-ai-provider-utils": "^1.0.0"
+  }
 }

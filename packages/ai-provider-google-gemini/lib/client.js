@@ -34,13 +34,13 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
   if (image) {
     const images = parts.filter(part => part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data)
       .map(part => ({mimeType: part.inlineData.mimeType, data: part.inlineData.data}));
-    if (!images.length) throw failure('Google Gemini returned no image output', response, payload.usageMetadata, 'gemini');
-    return {images, provider: 'google-gemini', model: request.model, usage, ...metadata(payload.usageMetadata, response, 'gemini')};
+    if (!images.length) throw failure('Google Gemini returned no image output', response, payload.usageMetadata);
+    return {images, provider: 'google-gemini', model: request.model, usage, ...metadata(payload.usageMetadata, response)};
   }
   const output = parts
     .filter(item => typeof item.text === 'string').map(item => item.text).join('\n');
-  if (typeof output !== 'string' || !output.trim()) throw failure('Google Gemini returned no text output', response, payload.usageMetadata, 'gemini');
-  return {text: output, provider: 'google-gemini', model: request.model, usage, ...metadata(payload.usageMetadata, response, 'gemini')};
+  if (typeof output !== 'string' || !output.trim()) throw failure('Google Gemini returned no text output', response, payload.usageMetadata);
+  return {text: output, provider: 'google-gemini', model: request.model, usage, ...metadata(payload.usageMetadata, response)};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};
