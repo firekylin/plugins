@@ -1,0 +1,26 @@
+{
+  "name": "firekylin-plugin-ai-provider-openai",
+  "version": "1.0.0",
+  "description": "OpenAI provider for Firekylin AI services",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-provider-openai"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-provider-openai",
+    "entry": "plugin.js",
+    "permissions": ["network:openai", "credentials:write"]
+  },
+  "files": ["lib", "plugin.js", "README.md"]
+}

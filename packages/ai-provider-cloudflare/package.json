@@ -1,0 +1,33 @@
+{
+  "name": "firekylin-plugin-ai-provider-cloudflare",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers AI provider for Firekylin AI services",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-provider-cloudflare"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-provider-cloudflare",
+    "entry": "plugin.js",
+    "permissions": [
+      "network:cloudflare",
+      "credentials:write"
+    ]
+  },
+  "files": [
+    "lib",
+    "plugin.js",
+    "README.md"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "firekylin-plugin-ai-provider-qianwen",
+  "version": "1.0.0",
+  "description": "通义千问 provider for Firekylin AI services",
+  "main": "plugin.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firekylin/plugins.git",
+    "directory": "packages/ai-provider-qianwen"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.14.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "ai-provider-qianwen",
+    "entry": "plugin.js",
+    "permissions": [
+      "network:qianwen",
+      "credentials:write"
+    ]
+  },
+  "files": [
+    "lib",
+    "plugin.js",
+    "README.md"
+  ]
+}
