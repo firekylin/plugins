@@ -1,6 +1,6 @@
 {
   "name": "firekylin-plugin-ai-provider-xiaomi-mimo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "小米 MiMo provider for Firekylin AI services",
   "main": "plugin.js",
   "license": "MIT",
