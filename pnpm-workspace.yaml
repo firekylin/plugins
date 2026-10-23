@@ -1,5 +1,2 @@
 packages:
   - "packages/*"
-
-# Link local semver dependencies while keeping npm-compatible ranges in published manifests.
-linkWorkspacePackages: true

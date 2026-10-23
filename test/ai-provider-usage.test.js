@@ -26,41 +26,70 @@ const cases = [
     expected: {inputTokens: 10, outputTokens: 4, totalTokens: 14, cacheReadTokens: null, cacheWriteTokens: null, reasoningTokens: null},
     zero: {prompt_eval_count: 0, eval_count: 0}}
 ];
-function generate(id, payload, {ok = true} = {}) {
-  return require(`../packages/ai-provider-${id}/lib/client`).generate({apiKey: 'test', accountId: 'a'.repeat(32),
-    request: {model: 'test', messages: [{role: 'user', content: 'hello'}]}, fetchImpl: async() => ({ok, status: ok ? 200 : 503,
-      headers: new Headers({'x-request-id': 'request-id', Authorization: 'not-attached'}), json: async() => payload})});
+// Set FIREKYLIN_CORE_PATH to exercise these declarations against a local core checkout.
+const core = process.env.FIREKYLIN_CORE_PATH;
+async function generate(id, payload, {ok = true} = {}) {
+  let definition;
+  await require(`../packages/ai-provider-${id}/plugin`).register({
+    ai: {credentials: {get: async name => ({apiKey: 'test', accountId: 'a'.repeat(32), modelId: 'test'})[name]},
+      registerProvider: value => { definition = value }},
+    admin: {registerForm() {}, registerAction() {}}
+  });
+  assert.ok(definition.usageAdapter);
+  const adapter = core ? require(`${core}/src/ai/usage`).usageAdapter(definition.usageAdapter) : null;
+  const reports = [];
+  const reportUsage = (raw, response) => reports.push({raw, requestId: response.headers.get('x-request-id'),
+    ...(adapter ? adapter.metadata(raw, response) : {})});
+  const previous = global.fetch;
+  global.fetch = async() => ({ok, status: ok ? 200 : 503,
+    headers: new Headers({'x-request-id': 'request-id', Authorization: 'not-attached'}), json: async() => payload});
+  try {
+    const result = await definition.generate({model: 'test', messages: [{role: 'user', content: 'hello'}]}, {reportUsage});
+    return {result, report: reports.at(-1)};
+  } catch (error) {
+    // Test-only observation; production errors are not modified by providers.
+    error.report = reports.at(-1);
+    throw error;
+  } finally { global.fetch = previous }
 }
 for (const fixture of cases) {
-  test(`${fixture.id}: maps native usage and preserves legacy counts`, async() => {
+  test(`${fixture.id}: reports native usage through registration and preserves legacy counts`, async() => {
     const payload = fixture.payload(fixture.usage);
-    const result = await generate(fixture.id, payload);
-    assert.deepEqual(result.usageDetails, fixture.expected);
-    assert.equal(result.providerRequestId, 'request-id');
+    const {result, report} = await generate(fixture.id, payload);
+    assert.deepEqual(report.raw, fixture.id === 'ollama' ? payload : fixture.usage);
+    if (core) assert.deepEqual(report.usageDetails, fixture.expected);
+    assert.equal(report.requestId, 'request-id');
     assert.equal(result.headers, undefined);
     if (payload.usage) assert.equal(result.usage, payload.usage);
     if (fixture.id === 'google-gemini') assert.deepEqual(result.usage, {prompt_tokens: 10, completion_tokens: 4, total_tokens: 16});
     if (fixture.id === 'ollama') assert.deepEqual(result.usage, {prompt_tokens: 10, completion_tokens: 4, total_tokens: 14});
   });
-  test(`${fixture.id}: missing is unknown and zero is known`, async() => {
+  test(`${fixture.id}: reports missing and zero distinctly`, async() => {
     const missing = await generate(fixture.id, fixture.payload());
-    for (const key of ['inputTokens', 'outputTokens', 'totalTokens']) assert.equal(missing.usageDetails[key], null);
+    assert.deepEqual(missing.report.raw, fixture.id === 'ollama' ? fixture.payload() : undefined);
     const zero = await generate(fixture.id, fixture.payload(fixture.zero));
-    for (const key of ['inputTokens', 'outputTokens', 'totalTokens']) assert.equal(zero.usageDetails[key], 0);
+    assert.deepEqual(zero.report.raw, fixture.id === 'ollama' ? fixture.payload(fixture.zero) : fixture.zero);
+    if (core) {
+      for (const key of ['inputTokens', 'outputTokens', 'totalTokens']) {
+        assert.equal(missing.report.usageDetails[key], null);
+        assert.equal(zero.report.usageDetails[key], 0);
+      }
+    }
   });
-  test(`${fixture.id}: HTTP failures retain request IDs without response bodies`, async() => {
+  test(`${fixture.id}: reports HTTP request IDs without attaching responses to errors`, async() => {
     await assert.rejects(generate(fixture.id, {}, {ok: false}), error => {
-      assert.equal(error.providerRequestId, 'request-id');
+      assert.equal(error.report.requestId, 'request-id');
       assert.equal(error.response, undefined);
       return true;
     });
   });
-  test(`${fixture.id}: empty output retains already reported usage`, async() => {
+  test(`${fixture.id}: reports usage before rejecting empty output`, async() => {
     const payload = fixture.id === 'google-gemini' ? {usageMetadata: fixture.usage} : fixture.id === 'ollama'
       ? fixture.usage : {usage: fixture.usage};
     await assert.rejects(generate(fixture.id, payload), error => {
-      assert.deepEqual(error.usageDetails, fixture.expected);
-      assert.equal(error.providerRequestId, 'request-id');
+      assert.deepEqual(error.report.raw, fixture.usage);
+      if (core) assert.deepEqual(error.report.usageDetails, fixture.expected);
+      assert.equal(error.report.requestId, 'request-id');
       return true;
     });
   });

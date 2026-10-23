@@ -1,5 +1,4 @@
 'use strict';
-const {responsesUsage: {metadata, failure}} = require('firekylin-ai-provider-utils');
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
@@ -17,7 +16,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
@@ -29,14 +28,16 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       ...(request.maxOutputTokens ? {max_output_tokens: request.maxOutputTokens} : {})
     })
   });
+  reportUsage(undefined, response);
   const payload = await response.json().catch(() => ({}));
+  reportUsage(payload.usage, response);
   if (!response.ok) {
     const message = payload.error && payload.error.message ? payload.error.message : `HTTP ${response.status}`;
-    throw failure(`OpenAI request failed: ${message}`, response);
+    throw new Error(`OpenAI request failed: ${message}`);
   }
   const text = outputText(payload);
-  if (!text) throw failure('OpenAI returned no text output', response, payload.usage);
-  return {text, provider: 'openai', model: request.model, usage: payload.usage || undefined, ...metadata(payload.usage, response)};
+  if (!text) throw new Error('OpenAI returned no text output');
+  return {text, provider: 'openai', model: request.model, usage: payload.usage || undefined};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, outputText, generate};

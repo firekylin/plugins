@@ -1,5 +1,4 @@
 'use strict';
-const {metadata, failure} = require('./usage');
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -11,7 +10,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('Google Gemini API key is not configured');
   if (!request.model) throw new TypeError('Google Gemini model ID is required');
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
@@ -27,20 +26,22 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch}) {
       generationConfig: image ? {responseModalities: ['IMAGE']} : {maxOutputTokens: request.maxOutputTokens || 2048}
     })
   });
-  if (!response.ok) throw failure('Google Gemini request failed (HTTP ' + response.status + ')', response);
+  reportUsage(undefined, response);
+  if (!response.ok) throw new Error('Google Gemini request failed (HTTP ' + response.status + ')');
   const payload = await response.json();
+  reportUsage(payload.usageMetadata, response);
   const parts = payload.candidates?.[0]?.content?.parts || [];
   const usage = payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount ?? null, completion_tokens: payload.usageMetadata.candidatesTokenCount ?? null, total_tokens: payload.usageMetadata.totalTokenCount ?? null} : undefined;
   if (image) {
     const images = parts.filter(part => part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data)
       .map(part => ({mimeType: part.inlineData.mimeType, data: part.inlineData.data}));
-    if (!images.length) throw failure('Google Gemini returned no image output', response, payload.usageMetadata);
-    return {images, provider: 'google-gemini', model: request.model, usage, ...metadata(payload.usageMetadata, response)};
+    if (!images.length) throw new Error('Google Gemini returned no image output');
+    return {images, provider: 'google-gemini', model: request.model, usage};
   }
   const output = parts
     .filter(item => typeof item.text === 'string').map(item => item.text).join('\n');
-  if (typeof output !== 'string' || !output.trim()) throw failure('Google Gemini returned no text output', response, payload.usageMetadata);
-  return {text: output, provider: 'google-gemini', model: request.model, usage, ...metadata(payload.usageMetadata, response)};
+  if (typeof output !== 'string' || !output.trim()) throw new Error('Google Gemini returned no text output');
+  return {text: output, provider: 'google-gemini', model: request.model, usage};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};

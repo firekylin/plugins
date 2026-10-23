@@ -19,10 +19,11 @@ module.exports = {
       description: '通过 OpenAI Responses API 使用 GPT 文本生成模型。',
       logo: 'https://openai.com/favicon.ico',
       models: MODELS,
+      usageAdapter: {protocol: 'responses'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal}) => generate({
-        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal
+      generate: async(request, {signal, reportUsage}) => generate({
+        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage
       })
     });
 

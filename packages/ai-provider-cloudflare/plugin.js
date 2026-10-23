@@ -16,11 +16,12 @@ module.exports = {
     ctx.ai.registerProvider({
       id: 'cloudflare', label: 'Cloudflare Workers AI', description: '通过 Cloudflare Workers AI 使用文本模型。',
       logo: 'https://www.cloudflare.com/favicon.ico', models: MODELS,
+      usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: async() => Boolean(accountId && await ctx.ai.credentials.has('apiKey')),
-      generate: async(request, {signal}) => generate({
+      generate: async(request, {signal, reportUsage}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), accountId,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
       })
     });
     ctx.admin.registerForm({

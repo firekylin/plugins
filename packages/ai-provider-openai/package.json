@@ -22,8 +22,5 @@
     "entry": "plugin.js",
     "permissions": ["network:openai", "credentials:write"]
   },
-  "files": ["lib", "plugin.js", "README.md"],
-  "dependencies": {
-    "firekylin-ai-provider-utils": "^1.0.0"
-  }
+  "files": ["lib", "plugin.js", "README.md"]
 }

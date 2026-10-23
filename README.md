@@ -44,26 +44,20 @@ access token is stored in GitHub.
 
 ## AI usage metadata
 
-Provider results preserve their native `usage` property and additionally return `usageDetails` with
-input/output/total tokens plus available cache-read, cache-write and reasoning counts. Missing values
-are `null`; a reported zero stays zero. Totals are derived only when both input and output are known.
-Cache and reasoning detail fields are not added twice. Anthropic input includes its separate cache
-counts; Gemini output includes candidates and reported thought tokens. Gemini and Ollama no longer
-fill missing usage with zero.
+Providers declare `usageAdapter` when registering: a standard protocol (`chat-completions` or
+`responses`) plus optional native field overrides. Selectors support dotted paths, ordered fallback
+paths, and sums with explicit defaults for optional native counters. Only Anthropic, Gemini, Ollama
+and DeepSeek need custom mappings.
 
-When upstream request-ID headers are available, `providerRequestId` is included in results or errors.
-No full HTTP responses or headers are attached for auditing. Core owns audit storage and authenticated
-caller attribution; these plugins only map provider-specific metadata. The shared
-[`firekylin-ai-provider-utils`](packages/ai-provider-utils) package owns validation, unknown/zero handling,
-total derivation and request-ID/error metadata. Standard protocol providers import its ready-made adapters;
-only Anthropic, Gemini, Ollama and DeepSeek declare native field differences. No vendor-switch logic is
-shipped inside providers. No pricing or fee estimation is added.
+The core supplies `reportUsage(rawUsage, response)` in the generation context. Clients report headers
+once available, then native usage after parsing the response, before checking for empty output.
+Core immediately extracts declared counters and the request ID; it never retains the full response.
+Core owns normalization, missing/zero handling, safe total derivation, and audit persistence. Provider
+results keep their original `usage` shape; the core adds normalized `usageDetails` to successful results.
+Failures keep their original errors while already reported usage remains available to the audit log.
 
-Provider dependencies use normal npm semver ranges. The workspace links these locally for development;
-published packages resolve the shared utility normally, without reaching into a sibling plugin directory.
-Publish the new utility package before releasing provider versions that depend on it, following the
-repository's first-publication/trusted-publisher setup above. This change does not publish packages.
-
-Run `npm test` at the repository root for the shared cross-provider contract suite plus all package tests.
-Generic normalization tests live only in the shared package; provider field contracts are table-driven in
-`test/ai-provider-usage.test.js`.
+There is no shared utility npm package or additional publishing dependency. Older cores may omit the
+reporting callback; clients still generate normally, but normalized audit metadata requires the updated core.
+Provider contracts are covered by `test/ai-provider-usage.test.js`; normalization is tested in core.
+Set `FIREKYLIN_CORE_PATH` to a local core checkout when running that contract suite to additionally
+verify all provider declarations against the actual core normalizer.
