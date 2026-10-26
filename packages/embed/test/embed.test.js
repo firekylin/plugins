@@ -49,3 +49,33 @@ test('additional media providers produce fixed HTTPS player URLs', () => {
   }
   for (const input of ['https://open.spotify.com/user/me', 'https://soundcloud.com/artist', 'https://tiktok.com/@user', 'https://soundcloud.com.evil.test/user/song']) assert.equal(plugin.resolveEmbed(input), null);
 });
+
+test('Chinese video and music providers normalize supported URL forms', () => {
+  const cases = [
+    ['https://v.youku.com/v_show/id_XNjMzNzY4MjYxNg==.html', 'https://player.youku.com/embed/XNjMzNzY4MjYxNg==?autoplay=false'],
+    ['https://v.youku.com/video?vid=XNjMzNzY4MjYxNg%3D%3D', 'https://player.youku.com/embed/XNjMzNzY4MjYxNg==?autoplay=false'],
+    ['https://v.qq.com/x/page/u3536djb2a0.html', 'https://v.qq.com/txp/iframe/player.html?vid=u3536djb2a0&autoplay=false'],
+    ['https://v.qq.com/x/cover/cover123/u3536djb2a0.html', 'https://v.qq.com/txp/iframe/player.html?vid=u3536djb2a0&autoplay=false'],
+    ['https://v.qq.com/txp/iframe/player.html?vid=u3536djb2a0&autoplay=true', 'https://v.qq.com/txp/iframe/player.html?vid=u3536djb2a0&autoplay=false'],
+    ['https://music.163.com/#/song?id=347230', 'https://music.163.com/outchain/player?type=2&id=347230&auto=0&height=66'],
+    ['https://music.163.com/song?id=347230', 'https://music.163.com/outchain/player?type=2&id=347230&auto=0&height=66'],
+    ['https://y.music.163.com/m/song?id=347230', 'https://music.163.com/outchain/player?type=2&id=347230&auto=0&height=66'],
+    ['https://music.163.com/#/playlist?id=123', 'https://music.163.com/outchain/player?type=0&id=123&auto=0&height=430'],
+    ['https://music.163.com/album?id=456', 'https://music.163.com/outchain/player?type=1&id=456&auto=0&height=430']
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(plugin.resolveEmbed(input).src, expected);
+    assert.match(render(input), /<iframe/);
+    assert.doesNotMatch(render(input), /<a\b/);
+  }
+  assert.match(render(cases[5][0]), /height:86px/);
+  assert.match(render(cases[8][0]), /height:450px/);
+});
+test('Chinese providers reject invalid IDs, collection-only video pages and lookalike domains', () => {
+  for (const input of ['https://v.youku.com/video?vid=bad', 'https://v.youku.com.evil.test/video?vid=X123', 'https://v.qq.com/x/cover/cover123.html', 'https://v.qq.com/play.html?vid=bad', 'https://music.163.com/song?id=-1', 'https://music.163.com/song?id=123evil', 'https://music.163.com/#/artist?id=123', 'https://music.163.com.evil.test/song?id=123']) assert.equal(plugin.resolveEmbed(input), null, input);
+  const input = 'https://v.youku.com/video?vid=X123';
+  assert.match(plugin.resolveEmbed(input, {youkuClientId: 'my_client'}).src, /client_id=my_client/);
+  assert.doesNotMatch(plugin.resolveEmbed(input, {youkuClientId: 'bad"value'}).src, /client_id/);
+  const md = new MarkdownIt().use(plugin.embedPlugin, {providers: []});
+  assert.doesNotMatch(md.render(input), /<iframe/);
+});

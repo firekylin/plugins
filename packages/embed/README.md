@@ -52,3 +52,23 @@ currently makes no server-side requests. See
 https://developer.wordpress.org/reference/classes/wp_oembed/ for the reference
 registry. Facebook, Instagram, SlideShare and Screencast have been removed from
 WordPress's registry and are not planned as automatic public providers here.
+
+## 国内服务
+
+- 优酷：`https://v.youku.com/v_show/id_XNjMzNzY4MjYxNg==.html`，或
+  `https://v.youku.com/video?vid=XNjMzNzY4MjYxNg==`。
+- 腾讯视频：`https://v.qq.com/x/page/u3536djb2a0.html`、包含单集 VID 的
+  `/x/cover/<cover>/<vid>.html`，或含有效 `vid` 的播放器链接。
+  只有合集 ID 的页面不转换，因为无法在不请求接口的情况下确定单集。
+- 网易云音乐：歌曲、专辑、歌单页面，支持 `/song?id=...`、`/#/song?id=...`
+  和移动端 `/m/song?id=...` 等格式。歌曲使用紧凑播放器，专辑和歌单显示列表。
+
+对应 provider 白名单主机为 `player.youku.com`、`v.qq.com`、`music.163.com`。
+不展开短链接，不向服务端发起网络请求，不自动播放。
+优酷可在 `pluginConfig.embed.youkuClientId` 配置自己申请的 Client ID；
+播放器是否允许无 Client ID 或站外播放，取决于优酷和视频权限。
+网易云音乐同样受版权、地区和外链权限限制。尚未完成这些播放器的浏览器播放实测。
+
+参考：
+- https://cloud.youku.com/index/induction
+- 网易云音乐官方外链生成入口：`https://music.163.com/#/outchain/2/<song-id>`
