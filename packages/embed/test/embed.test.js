@@ -13,11 +13,11 @@ test('registers the Markdown filter and returns the parser', () => {
   assert.equal(callback(md), md);
   assert.match(md.render(url), /<iframe/);
 });
-test('embeds standalone paragraphs and retains a fallback link', () => {
+test('embeds standalone paragraphs without an additional original link', () => {
   const html = render(`Before\n\n${url}\n\n${url}\n\nAfter`);
   assert.equal((html.match(/<iframe/g) || []).length, 2);
   assert.match(html, /youtube-nocookie.com/);
-  assert.match(html, /<a href=/);
+  assert.doesNotMatch(html, /<a\b/);
   assert.match(html, /<p>After<\/p>/);
 });
 test('preserves inline links, explicit links, code, lists and unknown URLs', () => {
@@ -32,5 +32,5 @@ test('supports provider URLs and rejects unsafe or malformed input', () => {
 test('provider allowlist and attribute escaping', () => {
   const md = new MarkdownIt().use(plugin.embedPlugin, {providers: []});
   assert.doesNotMatch(md.render(url), /<iframe/);
-  assert.match(render(url + '&x="evil"'), /&quot;evil&quot;/);
+  assert.doesNotMatch(render(url + '&x="evil"'), /evil/);
 });

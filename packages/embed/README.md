@@ -18,7 +18,8 @@ Supported URLs: YouTube watch/shorts/embed and youtu.be links, public numeric
 Vimeo links, Bilibili BV/av video links (including `p`), GitHub Gist owner/id
 links, and JSFiddle fiddle links with optional owner and revision.
 Gist uses its `.pibb` iframe representation; third-party availability and framing
-policies may affect embeds. Every embed retains a clickable original URL.
+policies may affect embeds. Recognized URLs render only the embed, without an
+additional original-link label. Unsupported URLs remain ordinary links.
 
 Inline URLs, explicit Markdown links/autolinks, code, tight list items, unsupported
 URLs and malformed URLs stay unchanged. Blockquotes and loose-list paragraphs

@@ -42,7 +42,7 @@ function embedPlugin(md, {providers} = {}) {
       open.tag = '';
       open.nesting = 0;
       const escape = md.utils.escapeHtml;
-      open.content = `<div class="firekylin-embed"><iframe src="${escape(embed.src)}" title="${escape(embed.title)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-presentation" allow="fullscreen; picture-in-picture" allowfullscreen style="display:block;width:100%;${embed.code ? 'height:400px;' : 'aspect-ratio:16/9;'}border:0"></iframe><a href="${escape(raw)}" rel="noopener noreferrer">${escape(raw)}</a></div>\n`;
+      open.content = `<div class="firekylin-embed"><iframe src="${escape(embed.src)}" title="${escape(embed.title)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-presentation" allow="fullscreen; picture-in-picture" allowfullscreen style="display:block;width:100%;${embed.code ? 'height:400px;' : 'aspect-ratio:16/9;'}border:0"></iframe></div>\n`;
       state.tokens.splice(i + 1, 2);
     }
   });
