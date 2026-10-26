@@ -38,3 +38,17 @@ embed hostnames: `www.youtube-nocookie.com`, `player.vimeo.com`,
 all embeds. Omitting the setting enables all supported providers.
 
 Run `pnpm --filter firekylin-plugin-embed test` to test.
+
+## Additional direct players
+
+Also supports Spotify track/album/artist/playlist/episode/show URLs (including
+localized `intl-*` paths), SoundCloud tracks and sets, TikTok video posts, and
+YouTube live URLs. Short redirect links are not expanded. Provider restriction
+hostnames: `open.spotify.com`, `w.soundcloud.com`, `www.tiktok.com`.
+
+The WordPress oEmbed registry covers many additional services. Full registry
+support requires a separate asynchronous oEmbed implementation; this package
+currently makes no server-side requests. See
+https://developer.wordpress.org/reference/classes/wp_oembed/ for the reference
+registry. Facebook, Instagram, SlideShare and Screencast have been removed from
+WordPress's registry and are not planned as automatic public providers here.

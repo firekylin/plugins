@@ -8,9 +8,18 @@ function resolveEmbed(value) {
   const path = url.pathname;
   let id;
   if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'].includes(host)) {
-    id = host === 'youtu.be' ? path.slice(1) : path === '/watch' ? url.searchParams.get('v') : (path.match(/^\/(?:shorts|embed)\/([^/]+)\/?$/) || [])[1];
+    id = host === 'youtu.be' ? path.slice(1) : path === '/watch' ? url.searchParams.get('v') : (path.match(/^\/(?:shorts|embed|live)\/([^/]+)\/?$/) || [])[1];
     if (!/^[\w-]{11}$/.test(id || '')) return null;
     return {src: `https://www.youtube-nocookie.com/embed/${id}`, title: 'YouTube video'};
+  }
+  if (['open.spotify.com', 'play.spotify.com'].includes(host) && (id = path.match(/^\/(?:intl-[a-z]+\/)?(track|album|artist|playlist|episode|show)\/([A-Za-z0-9]{22})\/?$/))) {
+    return {src: `https://open.spotify.com/embed/${id[1]}/${id[2]}`, title: 'Spotify audio', height: 352};
+  }
+  if (['soundcloud.com', 'www.soundcloud.com'].includes(host) && /^\/[\w-]+\/(?:sets\/)?[\w-]+\/?$/.test(path)) {
+    return {src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://soundcloud.com${path}`)}&auto_play=false`, title: 'SoundCloud audio', height: 300};
+  }
+  if (['tiktok.com', 'www.tiktok.com'].includes(host) && (id = path.match(/^\/@[\w.-]+\/video\/(\d+)\/?$/))) {
+    return {src: `https://www.tiktok.com/player/v1/${id[1]}?autoplay=0`, title: 'TikTok video', height: 600};
   }
   if (['vimeo.com', 'www.vimeo.com'].includes(host) && (id = path.match(/^\/(\d+)\/?$/))) {
     return {src: `https://player.vimeo.com/video/${id[1]}`, title: 'Vimeo video'};
@@ -42,7 +51,7 @@ function embedPlugin(md, {providers} = {}) {
       open.tag = '';
       open.nesting = 0;
       const escape = md.utils.escapeHtml;
-      open.content = `<div class="firekylin-embed"><iframe src="${escape(embed.src)}" title="${escape(embed.title)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-presentation" allow="fullscreen; picture-in-picture" allowfullscreen style="display:block;width:100%;${embed.code ? 'height:400px;' : 'aspect-ratio:16/9;'}border:0"></iframe></div>\n`;
+      open.content = `<div class="firekylin-embed"><iframe src="${escape(embed.src)}" title="${escape(embed.title)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-presentation" allow="fullscreen; picture-in-picture; encrypted-media" allowfullscreen style="display:block;width:100%;${embed.height ? `height:${embed.height}px;` : embed.code ? 'height:400px;' : 'aspect-ratio:16/9;'}border:0"></iframe></div>\n`;
       state.tokens.splice(i + 1, 2);
     }
   });

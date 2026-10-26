@@ -34,3 +34,18 @@ test('provider allowlist and attribute escaping', () => {
   assert.doesNotMatch(md.render(url), /<iframe/);
   assert.doesNotMatch(render(url + '&x="evil"'), /evil/);
 });
+
+test('additional media providers produce fixed HTTPS player URLs', () => {
+  const cases = [
+    ['https://open.spotify.com/track/0Lr4kGOYn9l83EjuK6cZFQ', 'open.spotify.com'],
+    ['https://soundcloud.com/artist/song', 'w.soundcloud.com'],
+    ['https://www.tiktok.com/@user/video/123456789', 'www.tiktok.com'],
+    ['https://youtube.com/live/dQw4w9WgXcQ', 'www.youtube-nocookie.com']
+  ];
+  for (const [input, host] of cases) {
+    assert.equal(new URL(plugin.resolveEmbed(input).src).hostname, host);
+    assert.match(render(input), /<iframe/);
+    assert.doesNotMatch(render(input), /<a\b/);
+  }
+  for (const input of ['https://open.spotify.com/user/me', 'https://soundcloud.com/artist', 'https://tiktok.com/@user', 'https://soundcloud.com.evil.test/user/song']) assert.equal(plugin.resolveEmbed(input), null);
+});
