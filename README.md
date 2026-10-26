@@ -31,6 +31,8 @@ packages through `pnpm-workspace.yaml`.
 - [`firekylin-plugin-markdown-route`](packages/markdown-route): expose public, published articles as raw Markdown at `/<slug>.md`.
 - [`firekylin-plugin-relate-post`](packages/relate-post): recommend related public posts using shared tags and categories.
 
+- [`firekylin-plugin-embed`](packages/embed): automatically embed supported standalone media and code URLs.
+
 ## Publishing
 
 Packages are published automatically through npm trusted publishing after their

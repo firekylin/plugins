@@ -1,0 +1,12 @@
+{
+  "name": "firekylin-plugin-embed",
+  "version": "1.0.0",
+  "description": "Embed supported standalone URLs in Firekylin Markdown",
+  "main": "plugin.js",
+  "license": "MIT",
+  "engines": {"node": ">=22.13.0", "firekylin": ">=2.10.6"},
+  "scripts": {"test": "node --test test/*.test.js"},
+  "devDependencies": {"markdown-it": "^14.1.0"},
+  "firekylin": {"type": "plugin", "id": "embed", "entry": "plugin.js"},
+  "files": ["plugin.js", "README.md"]
+}
