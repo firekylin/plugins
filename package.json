@@ -2,6 +2,6 @@
   "name": "@firekylin/plugins",
   "private": true,
   "scripts": {
-    "test": "pnpm --recursive test"
+    "test": "node --test test/*.test.js && pnpm --recursive test"
   }
 }

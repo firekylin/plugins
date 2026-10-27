@@ -1,0 +1,21 @@
+{
+  "name": "firekylin-plugin-markdown-route",
+  "version": "1.0.0",
+  "description": "Expose published Firekylin articles as raw Markdown",
+  "main": "plugin.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0",
+    "firekylin": ">=2.10.6"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "firekylin": {
+    "type": "plugin",
+    "id": "markdown-route",
+    "entry": "plugin.js",
+    "permissions": ["content:read"]
+  },
+  "files": ["lib", "plugin.js", "README.md"]
+}
