@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-anthropic",
+      "version": "1.1.0",
+      "title": "Anthropic AI",
+      "description": "Anthropic provider for Firekylin AI services",
+      "permissions": [
+        "network:anthropic",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-anthropic"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-cloudflare",
+      "version": "1.1.0",
+      "title": "Cloudflare Workers AI",
+      "description": "Cloudflare Workers AI provider for Firekylin AI services",
+      "permissions": [
+        "network:cloudflare",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-cloudflare"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-deepseek",
+      "version": "1.1.0",
+      "title": "DeepSeek AI",
+      "description": "DeepSeek provider for Firekylin AI services",
+      "permissions": [
+        "network:deepseek",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-deepseek"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-doubao",
+      "version": "1.1.0",
+      "title": "豆包 AI",
+      "description": "豆包 provider for Firekylin AI services",
+      "permissions": [
+        "network:doubao",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-doubao"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-google-gemini",
+      "version": "1.1.0",
+      "title": "Google Gemini AI",
+      "description": "Google Gemini provider for Firekylin AI services",
+      "permissions": [
+        "network:google-gemini",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-google-gemini"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-grok",
+      "version": "1.1.0",
+      "title": "Grok AI",
+      "description": "Grok provider for Firekylin AI services",
+      "permissions": [
+        "network:grok",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-grok"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-kimi",
+      "version": "1.1.0",
+      "title": "Kimi AI",
+      "description": "Kimi provider for Firekylin AI services",
+      "permissions": [
+        "network:kimi",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-kimi"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-ollama",
+      "version": "1.1.0",
+      "title": "Ollama AI",
+      "description": "Ollama provider for Firekylin AI services",
+      "permissions": [
+        "network:ollama"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-ollama"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-openai",
+      "version": "1.1.0",
+      "title": "OpenAI",
+      "description": "OpenAI provider for Firekylin AI services",
+      "permissions": [
+        "network:openai",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-openai"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-qianwen",
+      "version": "1.1.0",
+      "title": "通义千问 AI",
+      "description": "通义千问 provider for Firekylin AI services",
+      "permissions": [
+        "network:qianwen",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-qianwen"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-vercel-ai-gateway",
+      "version": "1.1.0",
+      "title": "Vercel AI Gateway",
+      "description": "Vercel AI Gateway provider for Firekylin AI services",
+      "permissions": [
+        "network:vercel-ai-gateway",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-vercel-ai-gateway"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-ai-provider-xiaomi-mimo",
+      "version": "1.1.0",
+      "title": "小米 MiMo AI",
+      "description": "小米 MiMo provider for Firekylin AI services",
+      "permissions": [
+        "network:xiaomi-mimo",
+        "credentials:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.14.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "ai-provider-xiaomi-mimo"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-backup",
+      "version": "1.0.0",
+      "title": "数据备份",
+      "description": "Manual and scheduled SQL backups for Firekylin",
+      "permissions": [
+        "database:read",
+        "filesystem:write",
+        "email:send"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "backup"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-comment-import",
+      "version": "1.0.0",
+      "title": "评论导入",
+      "description": "Import comments from Waline, Valine, Artalk, Twikoo, Gitalk, Giscus and Commento into Firekylin",
+      "permissions": [
+        "comments:write",
+        "content:read",
+        "users:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "comment-import"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-embed",
+      "version": "1.0.0",
+      "title": "链接嵌入",
+      "description": "Embed supported standalone URLs in Firekylin Markdown",
+      "permissions": [],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.6"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "embed"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-friend-links",
+      "version": "1.0.0",
+      "title": "友情链接",
+      "description": "Friend link management for Firekylin",
+      "permissions": [],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "friend-links"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-markdown-route",
+      "version": "1.0.0",
+      "title": "Markdown 链接",
+      "description": "Expose published Firekylin articles as raw Markdown",
+      "permissions": [
+        "content:read"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.6"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "markdown-route"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-relate-post",
+      "version": "1.0.0",
+      "title": "相关文章",
+      "description": "Related post recommendations for Firekylin",
+      "permissions": [
+        "content:read",
+        "settings:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.0"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "relate-post"
+      }
+    },
+    {
+      "type": "plugin",
+      "name": "firekylin-plugin-say",
+      "version": "1.0.0",
+      "title": "说说",
+      "description": "A lightweight microblog and status publishing plugin for Firekylin",
+      "permissions": [
+        "content:read",
+        "content:write"
+      ],
+      "engines": {
+        "node": ">=22.13.0",
+        "firekylin": ">=2.10.7"
+      },
+      "firekylin": {
+        "type": "plugin",
+        "id": "say"
+      }
+    }
+  ]
+}
