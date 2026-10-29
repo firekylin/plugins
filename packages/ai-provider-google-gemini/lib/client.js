@@ -15,7 +15,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   if (!request.model) throw new TypeError('Google Gemini model ID is required');
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
   const contents = request.messages.filter(message => message.role !== 'system').map(message => ({
-    role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}]
+    role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}, ...(request.images || []).map(image => ({inlineData: image}))]
   }));
   const image = request.capability === 'image';
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/models/${encodeURIComponent(request.model)}:generateContent`, {
