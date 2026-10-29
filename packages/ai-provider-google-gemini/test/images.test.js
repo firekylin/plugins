@@ -1,7 +1,8 @@
-const test = require('node:test');
+const nodeTest = require('node:test');
 const assert = require('node:assert/strict');
 const {generate} = require('../lib/client');
 const helpers = require('../../../test/helpers/ai-images');
+const test = helpers ? nodeTest : nodeTest.skip;
 const provider = 'google-gemini';
 const image = {mimeType: 'image/png', data: 'YWJj'};
 function payload() {

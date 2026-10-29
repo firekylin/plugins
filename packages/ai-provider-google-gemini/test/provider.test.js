@@ -62,7 +62,7 @@ test('sends google-gemini request with documented protocol', async() => {
   assert.equal(result.model, 'model-x');
 });
 
-test('generates images and preserves Gemini MIME type and base64 data', async() => {
+test('generates images and preserves Gemini MIME type and base64 data', {skip: !require('../../../test/helpers/ai-images')}, async() => {
   const result = await client.generate({
     images: require('../../../test/helpers/ai-images'),
     apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
@@ -82,7 +82,7 @@ test('generates images and preserves Gemini MIME type and base64 data', async() 
   assert.deepEqual(result.usage, {prompt_tokens: 5, completion_tokens: 8, total_tokens: 13});
 });
 
-test('rejects image requests without image output', async() => {
+test('rejects image requests without image output', {skip: !require('../../../test/helpers/ai-images')}, async() => {
   await assert.rejects(client.generate({
     images: require('../../../test/helpers/ai-images'),
     apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
