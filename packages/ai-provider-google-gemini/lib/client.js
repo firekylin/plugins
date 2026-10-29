@@ -1,4 +1,5 @@
 'use strict';
+const imageData = require('./images');
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -13,9 +14,10 @@ function normalizeBaseUrl(value) {
 async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('Google Gemini API key is not configured');
   if (!request.model) throw new TypeError('Google Gemini model ID is required');
+  const refs = request.capability === 'image' ? imageData.inputs(request, 14) : [];
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
   const contents = request.messages.filter(message => message.role !== 'system').map(message => ({
-    role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}, ...(request.images || []).map(image => ({inlineData: image}))]
+    role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}, ...(message.role === 'user' ? refs : []).map(image => ({inlineData: image}))]
   }));
   const image = request.capability === 'image';
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/models/${encodeURIComponent(request.model)}:generateContent`, {
@@ -34,7 +36,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   const usage = payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount ?? null, completion_tokens: payload.usageMetadata.candidatesTokenCount ?? null, total_tokens: payload.usageMetadata.totalTokenCount ?? null} : undefined;
   if (image) {
     const images = parts.filter(part => part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data)
-      .map(part => ({mimeType: part.inlineData.mimeType, data: part.inlineData.data}));
+      .map(part => imageData.image(part.inlineData));
     if (!images.length) throw new Error('Google Gemini returned no image output');
     return {images, provider: 'google-gemini', model: request.model, usage};
   }

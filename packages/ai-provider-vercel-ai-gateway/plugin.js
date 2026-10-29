@@ -5,7 +5,8 @@ const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 const MODELS = [
   {id: 'anthropic/claude-sonnet-4.6', label: 'anthropic/claude-sonnet-4.6', capabilities: ['text']},
   {id: 'openai/gpt-5.4', label: 'openai/gpt-5.4', capabilities: ['text']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']},
+  {id: 'google/gemini-3.1-flash-image-preview', label: 'google/gemini-3.1-flash-image-preview', capabilities: ['image']}
 ];
 
 module.exports = {
@@ -16,7 +17,7 @@ module.exports = {
 
     ctx.ai.registerProvider({
       id: 'vercel-ai-gateway', label: 'Vercel AI Gateway',
-      description: '通过 Vercel AI Gateway 调用多个服务商的文本模型。',
+      description: '通过 Vercel AI Gateway 调用多个服务商的文本模型及图片生成和编辑模型。',
       logo: 'https://vercel.com/favicon.ico',
       models: MODELS,
       usageAdapter: {protocol: 'chat-completions'},
@@ -56,8 +57,9 @@ module.exports = {
         const model = input?.model || selected || MODELS[0].id;
         if (!MODELS.some(item => item.id === model)) throw new TypeError('Invalid Vercel AI Gateway model');
         if (model === 'custom' && !customModel) throw new TypeError('Custom model ID is required');
+        const testModel = MODELS.find(item => item.id === model).capabilities.includes('text') ? model : MODELS[0].id;
         const result = await ctx.ai.generate({
-          provider: 'vercel-ai-gateway', model,
+          provider: 'vercel-ai-gateway', model: testModel,
           messages: [{role: 'user', content: 'Reply with OK only.'}],
           maxOutputTokens: 512
         });

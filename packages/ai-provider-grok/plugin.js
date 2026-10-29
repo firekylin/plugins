@@ -4,7 +4,8 @@ const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
   {id: 'grok-4.6', label: 'grok-4.6', capabilities: ['text']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']},
+  {id: 'grok-imagine-image-2.0', label: 'grok-imagine-image-2.0', capabilities: ['image']}
 ];
 
 module.exports = {
@@ -15,7 +16,7 @@ module.exports = {
 
     ctx.ai.registerProvider({
       id: 'grok', label: 'Grok',
-      description: '通过 xAI API 使用 Grok 文本模型。',
+      description: '通过 xAI API 使用 Grok 文本模型及图片生成和编辑模型。',
       logo: 'https://x.ai/favicon.ico',
       models: MODELS,
       usageAdapter: {protocol: 'chat-completions'},
@@ -55,8 +56,9 @@ module.exports = {
         const model = input?.model || selected || MODELS[0].id;
         if (!MODELS.some(item => item.id === model)) throw new TypeError('Invalid Grok model');
         if (model === 'custom' && !customModel) throw new TypeError('Custom model ID is required');
+        const testModel = MODELS.find(item => item.id === model).capabilities.includes('text') ? model : MODELS[0].id;
         const result = await ctx.ai.generate({
-          provider: 'grok', model,
+          provider: 'grok', model: testModel,
           messages: [{role: 'user', content: 'Reply with OK only.'}],
           maxOutputTokens: 512
         });

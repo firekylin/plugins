@@ -9,3 +9,11 @@ does not change the default. Password fields are never returned to the browser a
 is stored through Firekylin's encrypted, plugin-scoped credential store.
 
 For production, set `FIREKYLIN_AI_CREDENTIAL_KEY` to a stable secret before saving credentials.
+
+## 图片生成和编辑（1.2.0）
+
+通过 `capability: "image"` 调用插件列出的图片模型。`messages` 提供文本提示词；编辑时额外传入 `images: [{mimeType: "image/png", data: "<base64>"}]`，data 不包含 data URI 前缀。返回统一的 `images: [{mimeType, data}]`，调用方确认后自行上传入库。每次请求一次生成，不自动重试。连接测试使用文本模型，不触发图片生成。
+
+GPT Image 使用 `/images/generations`；提供参考图时改用 multipart `/images/edits`，最多 16 张参考图，返回 PNG。文本继续使用 Responses API。
+
+接口说明：https://developers.openai.com/api/docs/guides/image-generation

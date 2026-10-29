@@ -4,7 +4,8 @@ const {baseUrl, generate} = require('./lib/client');
 
 const MODELS = [
   {id: '@cf/openai/gpt-oss-20b', label: '@cf/openai/gpt-oss-20b', capabilities: ['text']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']},
+  {id: '@cf/black-forest-labs/flux-2-klein-4b', label: '@cf/black-forest-labs/flux-2-klein-4b', capabilities: ['image']}
 ];
 
 module.exports = {
@@ -14,7 +15,7 @@ module.exports = {
     let customModel = await ctx.ai.credentials.get('modelId') || '';
 
     ctx.ai.registerProvider({
-      id: 'cloudflare', label: 'Cloudflare Workers AI', description: '通过 Cloudflare Workers AI 使用文本模型。',
+      id: 'cloudflare', label: 'Cloudflare Workers AI', description: '通过 Cloudflare Workers AI 使用文本模型及图片生成和编辑模型。',
       logo: 'https://www.cloudflare.com/favicon.ico', models: MODELS,
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
@@ -53,8 +54,9 @@ module.exports = {
         const model = input?.model || selected || MODELS[0].id;
         if (!MODELS.some(item => item.id === model)) throw new TypeError('Invalid Cloudflare Workers AI model');
         if (model === 'custom' && !customModel) throw new TypeError('Custom model ID is required');
+        const testModel = MODELS.find(item => item.id === model).capabilities.includes('text') ? model : MODELS[0].id;
         const result = await ctx.ai.generate({
-          provider: 'cloudflare', model, messages: [{role: 'user', content: 'Reply with OK only.'}],
+          provider: 'cloudflare', model: testModel, messages: [{role: 'user', content: 'Reply with OK only.'}],
           maxOutputTokens: 512
         });
         return {message: `连接成功：${result.model}`};

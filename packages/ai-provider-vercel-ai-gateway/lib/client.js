@@ -1,4 +1,5 @@
 'use strict';
+const images = require('./images');
 
 const DEFAULT_BASE_URL = 'https://ai-gateway.vercel.sh/v1';
 
@@ -13,6 +14,7 @@ function normalizeBaseUrl(value) {
 async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
   if (!apiKey) throw new Error('Vercel AI Gateway API key is not configured');
   if (!request.model) throw new TypeError('Vercel AI Gateway model ID is required');
+  if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage});
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -33,3 +35,22 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};
+
+async function generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage}) {
+  const refs = images.inputs(request, 14);
+  const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
+    method: 'POST', signal, headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
+    body: JSON.stringify({model: request.model, modalities: ['text', 'image'], stream: false,
+      messages: [{role: 'user', content: [{type: 'text', text: images.prompt(request)},
+        ...refs.map(ref => ({type: 'image_url', image_url: {url: images.uri(ref)}}))]}]})
+  });
+  reportUsage(undefined, response);
+  const payload = await response.json(); reportUsage(payload.usage, response);
+  if (!response.ok) throw new Error(`Vercel image request failed (HTTP ${response.status})`);
+  const output = (payload.choices?.[0]?.message?.images || []).map(value => {
+    const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(value.image_url?.url || '');
+    return images.image(match && {mimeType: match[1], data: match[2]});
+  });
+  if (!output.length) throw new Error('Vercel returned no image output');
+  return {images: output, provider: 'vercel-ai-gateway', model: request.model, usage: payload.usage};
+}
