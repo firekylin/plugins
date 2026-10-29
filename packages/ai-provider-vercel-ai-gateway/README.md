@@ -11,3 +11,7 @@ API 参考：https://vercel.com/docs/ai-gateway/openai-compat/rest-api
 当前声明的图片模型为 `google/gemini-3.1-flash-image-preview`，通过 Chat Completions 的 image modality 生成和编辑。自定义模型入口仍仅声明文本能力；图片专用模型的独立端点不在此入口内。
 
 接口说明：https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-chat-completions/image-generation
+
+公共图片处理由 Firekylin core 通过服务商调用上下文的 `images` 提供，本插件不内置重复实现。请先升级到包含该 API 的 core（firekylin/firekylin#952），再升级插件；旧 core 的图片请求会明确提示需要升级，文本调用不受影响。
+
+开发验证：设置 `FIREKYLIN_CORE_PATH=/absolute/path/to/firekylin` 后运行测试，图片测试直接使用 core 的实际实现；也可使用已安装、包含该 API 的 `firekylin` 包。

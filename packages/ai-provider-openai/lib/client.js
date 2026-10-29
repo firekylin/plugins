@@ -1,5 +1,4 @@
 'use strict';
-const images = require('./images');
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
@@ -17,9 +16,9 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
-  if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage});
+  if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -44,7 +43,8 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, outputText, generate};
 
-async function generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage}) {
+async function generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images}) {
+  if (!images) throw new Error('Image generation requires updated Firekylin core');
   const refs = images.inputs(request, 16);
   const headers = {Authorization: `Bearer ${apiKey}`};
   let body;

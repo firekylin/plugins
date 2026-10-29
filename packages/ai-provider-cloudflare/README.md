@@ -11,3 +11,7 @@ API 参考：https://developers.cloudflare.com/workers-ai/configuration/open-ai-
 FLUX.2 klein 4B 使用原生 multipart `ai/run`，支持最多 4 张参考图。服务商要求参考图不超过 512×512；插件输出设为 512×512，外部传入参考图须自行满足该尺寸限制。需要具有 Workers AI 权限的 Token。
 
 接口说明：https://developers.cloudflare.com/changelog/post/2026-01-15-flux-2-klein-4b-workers-ai/
+
+公共图片处理由 Firekylin core 通过服务商调用上下文的 `images` 提供，本插件不内置重复实现。请先升级到包含该 API 的 core（firekylin/firekylin#952），再升级插件；旧 core 的图片请求会明确提示需要升级，文本调用不受影响。
+
+开发验证：设置 `FIREKYLIN_CORE_PATH=/absolute/path/to/firekylin` 后运行测试，图片测试直接使用 core 的实际实现；也可使用已安装、包含该 API 的 `firekylin` 包。

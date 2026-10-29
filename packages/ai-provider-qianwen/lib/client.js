@@ -1,5 +1,4 @@
 'use strict';
-const images = require('./images');
 
 const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
@@ -11,10 +10,10 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
   if (!apiKey) throw new Error('通义千问 API key is not configured');
   if (!request.model) throw new TypeError('通义千问 model ID is required');
-  if (request.capability === 'image') return generateImage({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl, reportUsage});
+  if (request.capability === 'image') return generateImage({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl, reportUsage, images});
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -36,7 +35,8 @@ async function generate({apiKey, baseUrl, imageBaseUrl, request, signal, fetchIm
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};
 
-async function generateImage({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl, reportUsage}) {
+async function generateImage({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl, reportUsage, images}) {
+  if (!images) throw new Error('Image generation requires updated Firekylin core');
   const refs = images.inputs(request, 3);
   const endpoint = imageBaseUrl ? normalizeBaseUrl(imageBaseUrl) : normalizeBaseUrl(baseUrl).replace(/\/compatible-mode\/v1$/, '/api/v1');
   const response = await fetchImpl(`${endpoint}/services/aigc/multimodal-generation/generation`, {

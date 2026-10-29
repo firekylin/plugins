@@ -59,7 +59,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check out Firekylin core for provider contract tests
+        uses: actions/checkout@v4
+        with:
+          repository: firekylin/firekylin
+          path: .test-core
+
       - name: Run tests
+        env:
+          FIREKYLIN_CORE_PATH: ${{ github.workspace }}/.test-core
         run: pnpm test
 
   publish:

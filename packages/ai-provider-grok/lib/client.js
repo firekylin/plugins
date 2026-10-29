@@ -1,5 +1,4 @@
 'use strict';
-const images = require('./images');
 
 const DEFAULT_BASE_URL = 'https://api.x.ai/v1';
 
@@ -11,10 +10,10 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
   if (!apiKey) throw new Error('Grok API key is not configured');
   if (!request.model) throw new TypeError('Grok model ID is required');
-  if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage});
+  if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -36,7 +35,8 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, generate};
 
-async function generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage}) {
+async function generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images}) {
+  if (!images) throw new Error('Image generation requires updated Firekylin core');
   const refs = images.inputs(request);
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/images/${refs.length ? 'edits' : 'generations'}`, {
     method: 'POST', signal, headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},

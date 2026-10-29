@@ -1,15 +1,14 @@
 'use strict';
-const images = require('./images');
 
 function baseUrl(accountId) {
   if (!/^[a-f0-9]{32}$/i.test(accountId || '')) throw new TypeError('Cloudflare Account ID is required');
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
 }
 
-async function generate({apiKey, accountId, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({apiKey, accountId, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
   if (!apiKey) throw new Error('Cloudflare API token is not configured');
   if (!request.model) throw new TypeError('Cloudflare model ID is required');
-  if (request.capability === 'image') return generateImage({apiKey, accountId, request, signal, fetchImpl, reportUsage});
+  if (request.capability === 'image') return generateImage({apiKey, accountId, request, signal, fetchImpl, reportUsage, images});
   const response = await fetchImpl(`${baseUrl(accountId)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -31,7 +30,8 @@ async function generate({apiKey, accountId, request, signal, fetchImpl = fetch, 
 
 module.exports = {baseUrl, generate};
 
-async function generateImage({apiKey, accountId, request, signal, fetchImpl, reportUsage}) {
+async function generateImage({apiKey, accountId, request, signal, fetchImpl, reportUsage, images}) {
+  if (!images) throw new Error('Image generation requires updated Firekylin core');
   const refs = images.inputs(request, 4);
   const body = new FormData();
   body.set('prompt', images.prompt(request));

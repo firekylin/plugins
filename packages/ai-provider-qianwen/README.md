@@ -11,3 +11,7 @@ API 参考：https://help.aliyun.com/zh/model-studio/compatibility-of-openai-wit
 Qwen Image 2.0 系列同时支持生成和编辑（最多 3 张参考图）。图片 API 地址默认将文本地址的 `/compatible-mode/v1` 替换为 `/api/v1`；如账号使用工作空间端点，请在「图片 API Base URL」填入对应地域的 `https://<WorkspaceId>.<region>.maas.aliyuncs.com/api/v1`。图片从服务商签名地址下载为 base64，不传递 API 密钥，不跟随重定向。
 
 接口说明：https://www.alibabacloud.com/help/en/model-studio/qwen-image-edit-api
+
+公共图片处理由 Firekylin core 通过服务商调用上下文的 `images` 提供，本插件不内置重复实现。请先升级到包含该 API 的 core（firekylin/firekylin#952），再升级插件；旧 core 的图片请求会明确提示需要升级，文本调用不受影响。
+
+开发验证：设置 `FIREKYLIN_CORE_PATH=/absolute/path/to/firekylin` 后运行测试，图片测试直接使用 core 的实际实现；也可使用已安装、包含该 API 的 `firekylin` 包。

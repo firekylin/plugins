@@ -22,9 +22,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage}) => generate({
+      generate: async(request, {signal, reportUsage, images}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, images
       })
     });
 
