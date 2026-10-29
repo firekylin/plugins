@@ -40,6 +40,7 @@ test('registers google-gemini without exposing stored secrets', async() => {
 
 test('sends google-gemini request with documented protocol', async() => {
   const result = await client.generate({
+    images: require('../../../test/helpers/ai-images'),
     apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
     request: {model: 'model-x', messages: [
       {role: 'system', content: 'Be concise'}, {role: 'user', content: 'Hello'},
@@ -61,8 +62,9 @@ test('sends google-gemini request with documented protocol', async() => {
   assert.equal(result.model, 'model-x');
 });
 
-test('generates images and preserves Gemini MIME type and base64 data', async() => {
+test('generates images and preserves Gemini MIME type and base64 data', {skip: !require('../../../test/helpers/ai-images')}, async() => {
   const result = await client.generate({
+    images: require('../../../test/helpers/ai-images'),
     apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
     request: {model: 'gemini-3.1-flash-image', capability: 'image', messages: [{role: 'user', content: 'Draw a cat'}]},
     fetchImpl: async(url, init) => {
@@ -80,8 +82,9 @@ test('generates images and preserves Gemini MIME type and base64 data', async() 
   assert.deepEqual(result.usage, {prompt_tokens: 5, completion_tokens: 8, total_tokens: 13});
 });
 
-test('rejects image requests without image output', async() => {
+test('rejects image requests without image output', {skip: !require('../../../test/helpers/ai-images')}, async() => {
   await assert.rejects(client.generate({
+    images: require('../../../test/helpers/ai-images'),
     apiKey: 'test-key', baseUrl: client.DEFAULT_BASE_URL,
     request: {model: 'gemini-3.1-flash-image', capability: 'image', messages: [{role: 'user', content: 'Draw a cat'}]},
     fetchImpl: async() => ({ok: true, json: async() => ({candidates: [{content: {parts: [{text: 'No image'}]}}]})})

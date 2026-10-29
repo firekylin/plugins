@@ -6,3 +6,11 @@
 
 API 参考：https://ai.google.dev/api/generate-content
 生图参考：https://ai.google.dev/gemini-api/docs/generate-content/image-generation
+
+## 图片生成和编辑（1.2.0）
+
+通过 `capability: "image"` 调用插件列出的图片模型。`messages` 提供文本提示词；编辑时额外传入 `images: [{mimeType: "image/png", data: "<base64>"}]`，data 不包含 data URI 前缀。返回统一的 `images: [{mimeType, data}]`，调用方确认后自行上传入库。每次请求一次生成，不自动重试。连接测试使用文本模型，不触发图片生成。
+
+接口说明：https://ai.google.dev/gemini-api/docs/image-generation
+
+公共图片处理由 Firekylin core 通过服务商调用上下文的 `images` 提供，本插件不内置重复实现。请先升级到包含该 API 的 core（firekylin/firekylin#952），再升级插件；旧 core 的图片请求会明确提示需要升级，文本调用不受影响。

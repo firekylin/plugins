@@ -6,7 +6,12 @@ const MODELS = [
   {id: 'gpt-5.4', label: 'GPT-5.4', capabilities: ['text']},
   {id: 'gpt-5-mini', label: 'GPT-5 mini', capabilities: ['text']},
   {id: 'gpt-5-nano', label: 'GPT-5 nano', capabilities: ['text']},
-  {id: 'gpt-4.1', label: 'GPT-4.1', capabilities: ['text']}
+  {id: 'gpt-4.1', label: 'GPT-4.1', capabilities: ['text']},
+  {id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst', capabilities: ['image']},
+  {id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare', capabilities: ['image']},
+  {id: 'gpt-image-2', label: 'gpt-image-2', capabilities: ['image']},
+  {id: 'gpt-image-1.5', label: 'gpt-image-1.5', capabilities: ['image']},
+  {id: 'gpt-image-1-mini', label: 'gpt-image-1-mini', capabilities: ['image']}
 ];
 
 module.exports = {
@@ -16,14 +21,14 @@ module.exports = {
 
     ctx.ai.registerProvider({
       id: 'openai', label: 'OpenAI',
-      description: '通过 OpenAI Responses API 使用 GPT 文本生成模型。',
+      description: '通过 OpenAI Responses API 生成文本，通过 Images API 生成和编辑图片。',
       logo: 'https://openai.com/favicon.ico',
       models: MODELS,
       usageAdapter: {protocol: 'responses'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage}) => generate({
-        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage
+      generate: async(request, {signal, reportUsage, images}) => generate({
+        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, images
       })
     });
 
@@ -48,7 +53,8 @@ module.exports = {
         const models = providers.find(provider => provider.id === 'openai')?.models || [];
         const requested = input && input.model;
         if (requested && !MODELS.some(item => item.id === requested)) throw new TypeError('Invalid OpenAI model');
-        const model = requested || models.find(item => item.selected)?.id || MODELS[0].id;
+        const selected = requested || models.find(item => item.selected)?.id || MODELS[0].id;
+        const model = MODELS.find(item => item.id === selected)?.capabilities.includes('text') ? selected : MODELS[0].id;
         const reasoningModel = model !== 'gpt-4.1';
         const result = await ctx.ai.generate({
           provider: 'openai', model,

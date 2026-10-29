@@ -1,6 +1,6 @@
 {
   "name": "firekylin-plugin-ai-provider-openai",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "OpenAI provider for Firekylin AI services",
   "main": "plugin.js",
   "license": "MIT",

@@ -16,8 +16,9 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
+  if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -41,3 +42,25 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, outputText, generate};
+
+async function generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images}) {
+  if (!images) throw new Error('Image generation requires updated Firekylin core');
+  const refs = images.inputs(request, 16);
+  const headers = {Authorization: `Bearer ${apiKey}`};
+  let body;
+  if (refs.length) {
+    body = new FormData();
+    body.set('model', request.model); body.set('prompt', images.prompt(request)); body.set('n', '1');
+    body.set('output_format', 'png');
+    refs.forEach((ref, i) => body.append('image[]', new Blob([Buffer.from(ref.data, 'base64')], {type: ref.mimeType}), `reference-${i}.${ref.mimeType.split('/')[1]}`));
+  } else {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify({model: request.model, prompt: images.prompt(request), n: 1, output_format: 'png'});
+  }
+  const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/images/${refs.length ? 'edits' : 'generations'}`, {method: 'POST', signal, headers, body});
+  reportUsage(undefined, response);
+  const payload = await response.json();
+  reportUsage(payload.usage, response);
+  if (!response.ok) throw new Error(`OpenAI image request failed (HTTP ${response.status})`);
+  return {images: images.output(payload, 'image/png'), provider: 'openai', model: request.model, usage: payload.usage};
+}

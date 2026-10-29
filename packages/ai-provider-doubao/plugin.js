@@ -4,7 +4,8 @@ const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
   {id: 'doubao-seed-2-1-pro-260628', label: 'doubao-seed-2-1-pro-260628', capabilities: ['text']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']},
+  {id: 'doubao-seedream-4-5-251128', label: 'doubao-seedream-4-5-251128', capabilities: ['image']}
 ];
 
 module.exports = {
@@ -15,15 +16,15 @@ module.exports = {
 
     ctx.ai.registerProvider({
       id: 'doubao', label: '豆包',
-      description: '通过火山方舟 API 使用豆包文本模型。',
+      description: '通过火山方舟 API 使用豆包文本模型及图片生成和编辑模型。',
       logo: 'https://www.volcengine.com/favicon.ico',
       models: MODELS,
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage}) => generate({
+      generate: async(request, {signal, reportUsage, images}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, images
       })
     });
 
@@ -55,8 +56,9 @@ module.exports = {
         const model = input?.model || selected || MODELS[0].id;
         if (!MODELS.some(item => item.id === model)) throw new TypeError('Invalid 豆包 model');
         if (model === 'custom' && !customModel) throw new TypeError('Custom model ID is required');
+        const testModel = MODELS.find(item => item.id === model).capabilities.includes('text') ? model : MODELS[0].id;
         const result = await ctx.ai.generate({
-          provider: 'doubao', model,
+          provider: 'doubao', model: testModel,
           messages: [{role: 'user', content: 'Reply with OK only.'}],
           maxOutputTokens: 512
         });
