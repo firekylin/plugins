@@ -1,0 +1,59 @@
+name: Sync published registry
+
+on:
+  workflow_run:
+    workflows: [Publish packages]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Every run reconciles all packages, so replacing a pending run loses no updates.
+concurrency:
+  group: sync-published-registry
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Also reconcile successful matrix entries when another package failed.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Reconcile and commit published versions
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            node .github/scripts/sync-registry.mjs
+            if git diff --quiet -- registry.json; then
+              exit 0
+            fi
+            git add registry.json
+            git commit -m 'chore: sync published plugin registry'
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            # A concurrent main update requires regeneration, not a stale rebase.
+          done
+          echo 'Unable to update registry; rerun this workflow after resolving push permissions or contention.' >&2
+          exit 1
