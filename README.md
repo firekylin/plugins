@@ -44,6 +44,40 @@ configure its trusted publisher on npm with the GitHub organization
 `firekylin`, repository `plugins`, and workflow filename `publish.yml`. No npm
 access token is stored in GitHub.
 
+## Marketplace registry
+
+`registry.json` uses schema version 1 and is consumed by the plugin marketplace.
+The **Sync published registry** workflow runs after **Publish packages** completes,
+including partial failures, and can also be run manually on `main` to recover
+from a delayed npm publication or a failed registry push. It does not republish
+packages: successful matrix entries can be reconciled without retrying npm publish.
+
+The dependency-free `.github/scripts/sync-registry.mjs` reconciles direct public
+plugin packages against the public npm registry. It selects the highest published
+stable version no newer than the package version on current `main`, never downgrades
+an existing entry, and leaves unpublished packages alone. This also handles a newer
+version bump arriving before the preceding release has been synchronized. Titles
+and custom registry fields are preserved; version-dependent descriptions,
+permissions, engines and plugin IDs come from the published manifest. Newly
+published plugins are appended with their package name as the default title;
+maintainers may customize that title in `registry.json`.
+
+Synchronization writes only after all npm lookups succeed, retries transient
+lookup failures, and makes no commit when nothing changed. Runs are serialized;
+if `main` advances before push, the job fetches it and regenerates instead of
+force-pushing. Only the sync job receives `contents: write`; it checks out trusted
+`main` and consumes no artifacts or code from the triggering run. The repository
+must allow `github-actions[bot]` to push registry updates to `main`; branch
+protection failures are surfaced and can be recovered with a manual rerun.
+Registry-only commits do not match the publish workflow's package paths, and the
+workflow uses the default `GITHUB_TOKEN`, so synchronization cannot loop into
+another publication. No additional token or npm credentials are required.
+
+Run `node .github/scripts/sync-registry.mjs` to reconcile locally (requires network
+access). `node --test test/sync-registry.test.js` tests publication gating,
+partial failures, metadata preservation, ordering, idempotency and atomic writes.
+The PR test workflow also runs the complete existing plugin test suite.
+
 ## AI usage metadata
 
 Providers declare `usageAdapter` when registering: a standard protocol (`chat-completions` or

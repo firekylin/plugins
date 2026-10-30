@@ -23,7 +23,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-cloudflare",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "Cloudflare Workers AI",
       "description": "Cloudflare Workers AI provider for Firekylin AI services",
       "permissions": [
@@ -61,7 +61,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-doubao",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "豆包 AI",
       "description": "豆包 provider for Firekylin AI services",
       "permissions": [
@@ -80,7 +80,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-google-gemini",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "Google Gemini AI",
       "description": "Google Gemini provider for Firekylin AI services",
       "permissions": [
@@ -99,7 +99,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-grok",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "Grok AI",
       "description": "Grok provider for Firekylin AI services",
       "permissions": [
@@ -155,7 +155,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-openai",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "OpenAI",
       "description": "OpenAI provider for Firekylin AI services",
       "permissions": [
@@ -174,7 +174,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-qianwen",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "通义千问 AI",
       "description": "通义千问 provider for Firekylin AI services",
       "permissions": [
@@ -193,7 +193,7 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-ai-provider-vercel-ai-gateway",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "title": "Vercel AI Gateway",
       "description": "Vercel AI Gateway provider for Firekylin AI services",
       "permissions": [
