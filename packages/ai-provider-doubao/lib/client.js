@@ -1,5 +1,7 @@
 'use strict';
 
+const {readStream} = require('./stream');
+
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 
 function normalizeBaseUrl(value) {
@@ -10,7 +12,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText, images}) {
   if (!apiKey) throw new Error('豆包 API key is not configured');
   if (!request.model) throw new TypeError('豆包 model ID is required');
   if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
@@ -20,13 +22,14 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
     body: JSON.stringify({
       model: request.model,
       messages: request.messages.map(message => ({role: message.role, content: message.content})),
-      stream: false,
+      stream: Boolean(onText),
+      ...(onText ? {stream_options: {include_usage: true}} : {}),
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
     })
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('豆包 request failed (HTTP ' + response.status + ')');
-  const payload = await response.json();
+  const payload = onText ? await readStream(response, onText, reportUsage) : await response.json();
   reportUsage(payload.usage, response);
   const output = payload.choices?.[0]?.message?.content;
   if (typeof output !== 'string' || !output.trim()) throw new Error('豆包 returned no text output');

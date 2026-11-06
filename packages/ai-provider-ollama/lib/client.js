@@ -1,5 +1,7 @@
 'use strict';
 
+const {readStream} = require('./stream');
+
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 
 function normalizeBaseUrl(value) {
@@ -12,7 +14,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText}) {
   if (!request.model) throw new TypeError('Ollama model ID is required');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/api/chat`, {
     method: 'POST', signal,
@@ -20,13 +22,13 @@ async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsag
     body: JSON.stringify({
       model: request.model, messages: request.messages.map(message => ({
         role: message.role, content: message.content
-      })), stream: false,
+      })), stream: Boolean(onText),
       ...(request.maxOutputTokens ? {options: {num_predict: request.maxOutputTokens}} : {})
     })
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Ollama request failed (HTTP ' + response.status + ')');
-  const payload = await response.json();
+  const payload = onText ? await readStream(response, onText, reportUsage) : await response.json();
   reportUsage(payload, response);
   const output = payload.message?.content;
   if (typeof output !== 'string' || !output.trim()) throw new Error('Ollama returned no text output');

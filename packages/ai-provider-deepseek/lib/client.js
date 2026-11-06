@@ -1,5 +1,7 @@
 'use strict';
 
+const {records, append} = require('./stream');
+
 const DEFAULT_BASE_URL = 'https://api.deepseek.com';
 
 function normalizeBaseUrl(value) {
@@ -32,35 +34,33 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   if (!response.ok) throw new Error(`DeepSeek request failed (HTTP ${response.status})`);
   let payload;
   if (onText && response.headers?.get('content-type')?.includes('text/event-stream')) {
-    const decoder = new TextDecoder();
-    let buffer = '', text = '', usage, complete = false;
+    let text = '', usage, complete = false, finishReason, toolSize = 0;
     const calls = [];
-    for await (const bytes of response.body) {
-      buffer = (buffer + decoder.decode(bytes, {stream: true})).replace(/\r\n/g, '\n');
-      let boundary;
-      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-        const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
-        const raw = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
-        if (raw === '[DONE]') {complete = true; continue}
-        if (!raw) continue;
-        const event = JSON.parse(raw);
-        if (event.error) throw new Error('DeepSeek stream failed');
-        if (event.usage) usage = event.usage;
-        const delta = event.choices?.[0]?.delta || {};
-        if (delta.content) {text += delta.content; onText(delta.content)}
-        for (const call of delta.tool_calls || []) {
-          const target = calls[call.index] ||= {id: '', function: {name: '', arguments: ''}};
-          if (call.id) target.id = call.id;
-          if (call.function?.name) target.function.name += call.function.name;
-          if (call.function?.arguments) target.function.arguments += call.function.arguments;
-        }
+    for await (const raw of records(response.body)) {
+      if (raw === '[DONE]') {complete = true; break}
+      const event = JSON.parse(raw);
+      if (event.usage) {usage = event.usage; reportUsage(usage, response)}
+      if (event.error) throw new Error('DeepSeek stream failed');
+      if (event.choices?.[0]?.finish_reason) finishReason = event.choices[0].finish_reason;
+      const delta = event.choices?.[0]?.delta || {};
+      text = append(text, delta.content, onText);
+      for (const call of delta.tool_calls || []) {
+        if (!Number.isInteger(call.index) || call.index < 0 || call.index >= 128) throw new Error('Invalid DeepSeek tool index');
+        toolSize += (call.id?.length || 0) + (call.function?.name?.length || 0) + (call.function?.arguments?.length || 0);
+        if (toolSize > 200000) throw new Error('DeepSeek tool output too large');
+        const target = calls[call.index] ||= {id: '', function: {name: '', arguments: ''}};
+        if (call.id) target.id = call.id;
+        if (call.function?.name) target.function.name += call.function.name;
+        if (call.function?.arguments) target.function.arguments += call.function.arguments;
       }
-      if (buffer.length > 2000000 || text.length > 200000) throw new Error('DeepSeek stream too large');
     }
     if (!complete) throw new Error('DeepSeek stream interrupted');
+    if (finishReason && !['stop', 'tool_calls'].includes(finishReason)) throw new Error('DeepSeek stream incomplete');
     payload = {usage, choices: [{message: {content: text, tool_calls: calls}}]};
   } else payload = await response.json();
   reportUsage(payload.usage, response);
+  const finishReason = payload.choices?.[0]?.finish_reason;
+  if (finishReason && !['stop', 'tool_calls'].includes(finishReason)) throw new Error('DeepSeek response incomplete');
   const output = payload.choices?.[0]?.message?.content;
   const toolCalls = (payload.choices?.[0]?.message?.tool_calls || []).map(call => ({
     id: call.id, name: call.function.name.replace(/__/g, '.'), input: JSON.parse(call.function.arguments)

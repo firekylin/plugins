@@ -1,5 +1,7 @@
 'use strict';
 
+const {records, append} = require('./stream');
+
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
 function outputText(payload) {
@@ -41,21 +43,14 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   reportUsage(undefined, response);
   let payload;
   if (onText && response.ok && response.headers?.get('content-type')?.includes('text/event-stream')) {
-    let buffer = '';
-    const decoder = new TextDecoder();
-    for await (const bytes of response.body) {
-      buffer = (buffer + decoder.decode(bytes, {stream: true})).replace(/\r\n/g, '\n');
-      let boundary;
-      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-        const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
-        const raw = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
-        if (!raw || raw === '[DONE]') continue;
-        const event = JSON.parse(raw);
-        if (event.type === 'response.output_text.delta') onText(event.delta);
-        if (event.type === 'response.completed') payload = event.response;
-        if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error('OpenAI stream failed');
-        if (buffer.length > 2000000) throw new Error('OpenAI stream frame too large');
-      }
+    let text = '';
+    for await (const raw of records(response.body)) {
+      if (raw === '[DONE]') continue;
+      const event = JSON.parse(raw);
+      if (event.response?.usage) reportUsage(event.response.usage, response);
+      if (event.type === 'response.output_text.delta') text = append(text, event.delta, onText);
+      if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error('OpenAI stream failed');
+      if (event.type === 'response.completed') {payload = event.response; break}
     }
     if (!payload) throw new Error('OpenAI stream interrupted');
   } else payload = await response.json().catch(() => ({}));
@@ -64,6 +59,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
     const message = payload.error && payload.error.message ? payload.error.message : `HTTP ${response.status}`;
     throw new Error(`OpenAI request failed: ${message}`);
   }
+  if (['incomplete', 'failed'].includes(payload.status)) throw new Error('OpenAI response incomplete');
   const text = outputText(payload);
   const toolCalls = (payload.output || []).filter(item => item.type === 'function_call').map(item => ({
     id: item.call_id, name: item.name.replace(/__/g, '.'), input: JSON.parse(item.arguments)

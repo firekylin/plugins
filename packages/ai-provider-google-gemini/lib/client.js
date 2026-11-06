@@ -1,5 +1,7 @@
 'use strict';
 
+const {readStream} = require('./stream');
+
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 function normalizeBaseUrl(value) {
@@ -10,7 +12,7 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText, images}) {
   if (!apiKey) throw new Error('Google Gemini API key is not configured');
   if (!request.model) throw new TypeError('Google Gemini model ID is required');
   if (request.capability === 'image' && !images) throw new Error('Image generation requires updated Firekylin core');
@@ -20,7 +22,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
     role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}, ...(message.role === 'user' ? refs : []).map(image => ({inlineData: image}))]
   }));
   const image = request.capability === 'image';
-  const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/models/${encodeURIComponent(request.model)}:generateContent`, {
+  const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/models/${encodeURIComponent(request.model)}:${onText && !image ? 'streamGenerateContent?alt=sse' : 'generateContent'}`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
     body: JSON.stringify({
@@ -30,7 +32,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Google Gemini request failed (HTTP ' + response.status + ')');
-  const payload = await response.json();
+  const payload = onText && !image ? await readStream(response, onText, reportUsage) : await response.json();
   reportUsage(payload.usageMetadata, response);
   const parts = payload.candidates?.[0]?.content?.parts || [];
   const usage = payload.usageMetadata ? {prompt_tokens: payload.usageMetadata.promptTokenCount ?? null, completion_tokens: payload.usageMetadata.candidatesTokenCount ?? null, total_tokens: payload.usageMetadata.totalTokenCount ?? null} : undefined;

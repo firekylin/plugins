@@ -3,8 +3,8 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6', capabilities: ['text']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
+  {id: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6', capabilities: ['text', 'stream']},
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']}
 ];
 
 module.exports = {
@@ -25,9 +25,9 @@ module.exports = {
       }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage}) => generate({
+      generate: async(request, {signal, reportUsage, onText}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, onText
       })
     });
     ctx.admin.registerForm({
