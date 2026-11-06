@@ -1,7 +1,5 @@
 'use strict';
 
-const {readStream} = require('./stream');
-
 const DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1';
 
 function normalizeBaseUrl(value) {
@@ -12,9 +10,10 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
   if (!apiKey) throw new Error('小米 MiMo API key is not configured');
   if (!request.model) throw new TypeError('小米 MiMo model ID is required');
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -28,7 +27,8 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('小米 MiMo request failed (HTTP ' + response.status + ')');
-  const payload = onText ? await readStream(response, onText, reportUsage) : await response.json();
+  if (onText) return {...streamResponse(response, 'chat-completions'), provider: 'xiaomi-mimo', model: request.model};
+  const payload = await response.json();
   reportUsage(payload.usage, response);
   const output = payload.choices?.[0]?.message?.content;
   if (typeof output !== 'string' || !output.trim()) throw new Error('小米 MiMo returned no text output');

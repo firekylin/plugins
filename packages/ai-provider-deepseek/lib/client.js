@@ -1,7 +1,5 @@
 'use strict';
 
-const {records, append} = require('./stream');
-
 const DEFAULT_BASE_URL = 'https://api.deepseek.com';
 
 function normalizeBaseUrl(value) {
@@ -11,8 +9,9 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
   if (!apiKey) throw new Error('DeepSeek API key is not configured');
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -34,29 +33,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   if (!response.ok) throw new Error(`DeepSeek request failed (HTTP ${response.status})`);
   let payload;
   if (onText && response.headers?.get('content-type')?.includes('text/event-stream')) {
-    let text = '', usage, complete = false, finishReason, toolSize = 0;
-    const calls = [];
-    for await (const raw of records(response.body)) {
-      if (raw === '[DONE]') {complete = true; break}
-      const event = JSON.parse(raw);
-      if (event.usage) {usage = event.usage; reportUsage(usage, response)}
-      if (event.error) throw new Error('DeepSeek stream failed');
-      if (event.choices?.[0]?.finish_reason) finishReason = event.choices[0].finish_reason;
-      const delta = event.choices?.[0]?.delta || {};
-      text = append(text, delta.content, onText);
-      for (const call of delta.tool_calls || []) {
-        if (!Number.isInteger(call.index) || call.index < 0 || call.index >= 128) throw new Error('Invalid DeepSeek tool index');
-        toolSize += (call.id?.length || 0) + (call.function?.name?.length || 0) + (call.function?.arguments?.length || 0);
-        if (toolSize > 200000) throw new Error('DeepSeek tool output too large');
-        const target = calls[call.index] ||= {id: '', function: {name: '', arguments: ''}};
-        if (call.id) target.id = call.id;
-        if (call.function?.name) target.function.name += call.function.name;
-        if (call.function?.arguments) target.function.arguments += call.function.arguments;
-      }
-    }
-    if (!complete) throw new Error('DeepSeek stream interrupted');
-    if (finishReason && !['stop', 'tool_calls'].includes(finishReason)) throw new Error('DeepSeek stream incomplete');
-    payload = {usage, choices: [{message: {content: text, tool_calls: calls}}]};
+    return {...streamResponse(response, 'chat-completions'), provider: 'deepseek', model: request.model};
   } else payload = await response.json();
   reportUsage(payload.usage, response);
   const finishReason = payload.choices?.[0]?.finish_reason;

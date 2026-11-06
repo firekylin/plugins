@@ -15,8 +15,8 @@ module.exports = {
       usageAdapter: {fields: {inputTokens: 'prompt_eval_count', outputTokens: 'eval_count'}},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => Boolean(modelId),
-      generate: async(request, {signal, reportUsage, onText}) => generate({
-        baseUrl, request: {...request, model: modelId}, signal, reportUsage, onText
+      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
+        baseUrl, request: {...request, model: modelId}, signal, reportUsage, streamResponse, onText
       })
     });
     ctx.admin.registerForm({

@@ -1,7 +1,5 @@
 'use strict';
 
-const {readStream} = require('./stream');
-
 const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
 function normalizeBaseUrl(value) {
@@ -12,10 +10,11 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText, images}) {
+async function generate({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, images}) {
   if (!apiKey) throw new Error('通义千问 API key is not configured');
   if (!request.model) throw new TypeError('通义千问 model ID is required');
   if (request.capability === 'image') return generateImage({apiKey, baseUrl, imageBaseUrl, request, signal, fetchImpl, reportUsage, images});
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -29,7 +28,8 @@ async function generate({apiKey, baseUrl, imageBaseUrl, request, signal, fetchIm
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('通义千问 request failed (HTTP ' + response.status + ')');
-  const payload = onText ? await readStream(response, onText, reportUsage) : await response.json();
+  if (onText) return {...streamResponse(response, 'chat-completions'), provider: 'qianwen', model: request.model};
+  const payload = await response.json();
   reportUsage(payload.usage, response);
   const output = payload.choices?.[0]?.message?.content;
   if (typeof output !== 'string' || !output.trim()) throw new Error('通义千问 returned no text output');

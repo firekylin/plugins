@@ -25,9 +25,9 @@ module.exports = {
       }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, onText}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, onText
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText
       })
     });
     ctx.admin.registerForm({

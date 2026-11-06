@@ -1,7 +1,5 @@
 'use strict';
 
-const {readStream} = require('./stream');
-
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 
 function normalizeBaseUrl(value) {
@@ -14,8 +12,9 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText}) {
+async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
   if (!request.model) throw new TypeError('Ollama model ID is required');
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/api/chat`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json'},
@@ -28,7 +27,8 @@ async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsag
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Ollama request failed (HTTP ' + response.status + ')');
-  const payload = onText ? await readStream(response, onText, reportUsage) : await response.json();
+  if (onText) return {...streamResponse(response, 'ollama'), provider: 'ollama', model: request.model};
+  const payload = await response.json();
   reportUsage(payload, response);
   const output = payload.message?.content;
   if (typeof output !== 'string' || !output.trim()) throw new Error('Ollama returned no text output');

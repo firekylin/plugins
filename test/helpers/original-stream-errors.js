@@ -1,8 +1,9 @@
 'use strict';
-const test = require('node:test');
+const wrap = require('./stream-client');
+const test = wrap ? require('node:test') : require('node:test').skip;
 const assert = require('node:assert/strict');
 module.exports = id => {
-  const {generate} = require(`../../packages/ai-provider-${id}/lib/client`);
+  const generate = wrap && wrap(require(`../../packages/ai-provider-${id}/lib/client`).generate);
   function call(events, reportUsage = () => {}, stream = true) {
     return generate({apiKey: 'test', request: {model: 'test', messages: []}, reportUsage,
       ...(stream ? {onText() {}} : {}), fetchImpl: async() => ({ok: true,

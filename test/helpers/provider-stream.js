@@ -1,9 +1,10 @@
 'use strict';
-const test = require('node:test');
+const wrap = require('./stream-client');
+const test = wrap ? require('node:test') : require('node:test').skip;
 const assert = require('node:assert/strict');
 
 module.exports = function streamTests(id) {
-  const {generate} = require(`../../packages/ai-provider-${id}/lib/client`);
+  const generate = wrap && wrap(require(`../../packages/ai-provider-${id}/lib/client`).generate);
   const ndjson = id === 'ollama';
   const native = ['anthropic', 'google-gemini', 'ollama'].includes(id);
   const usage = {prompt_tokens: 3, completion_tokens: 2, total_tokens: 5};
@@ -87,7 +88,7 @@ module.exports = function streamTests(id) {
   test(`${id}: rejects HTTP errors and malformed stream events`, async() => {
     await assert.rejects(generate(options({fetchImpl: async() => ({ok: false, status: 429})})), /HTTP 429/);
     await assert.rejects(generate(options({fetchImpl: async() => response(wire(['{invalid']))})), SyntaxError);
-    await assert.rejects(generate(options({fetchImpl: async() => ({ok: true})})), /Missing stream body/);
+    await assert.rejects(generate(options({fetchImpl: async() => ({ok: true})})), /Invalid AI stream response/);
   });
   test(`${id}: preserves abort errors during stream consumption`, async() => {
     const controller = new AbortController(), abort = new DOMException('Aborted', 'AbortError');
@@ -128,7 +129,7 @@ module.exports = function streamTests(id) {
     t.after(() => {global.fetch = previous});
     global.fetch = async() => response(wire(events));
     const deltas = [];
-    const result = await definition.generate(options().request, {onText: delta => deltas.push(delta)});
+    const result = await wrap(options => definition.generate(options.request, options))({request: options().request, onText: delta => deltas.push(delta)});
     assert.equal(result.text, deltas.join(''));
     assert.equal(deltas.length, 2);
   });

@@ -27,8 +27,8 @@ module.exports = {
       usageAdapter: {protocol: 'responses'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, images, onText}) => generate({
-        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, images, onText
+      generate: async(request, {signal, reportUsage, streamResponse, images, onText}) => generate({
+        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, streamResponse, images, onText
       })
     });
 

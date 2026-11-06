@@ -1,7 +1,5 @@
 'use strict';
 
-const {records, append} = require('./stream');
-
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
 function outputText(payload) {
@@ -18,9 +16,10 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images, onText}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, images, onText}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
   if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -43,16 +42,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   reportUsage(undefined, response);
   let payload;
   if (onText && response.ok && response.headers?.get('content-type')?.includes('text/event-stream')) {
-    let text = '';
-    for await (const raw of records(response.body)) {
-      if (raw === '[DONE]') continue;
-      const event = JSON.parse(raw);
-      if (event.response?.usage) reportUsage(event.response.usage, response);
-      if (event.type === 'response.output_text.delta') text = append(text, event.delta, onText);
-      if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error('OpenAI stream failed');
-      if (event.type === 'response.completed') {payload = event.response; break}
-    }
-    if (!payload) throw new Error('OpenAI stream interrupted');
+    return {...streamResponse(response, 'responses'), provider: 'openai', model: request.model};
   } else payload = await response.json().catch(() => ({}));
   reportUsage(payload.usage, response);
   if (!response.ok) {

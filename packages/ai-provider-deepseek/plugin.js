@@ -22,8 +22,8 @@ module.exports = {
       }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, onText}) => generate({
-        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, onText
+      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
+        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, streamResponse, onText
       })
     });
 

@@ -1,7 +1,10 @@
 'use strict';
+const wrap = require('../../../test/helpers/stream-client');
 const test = require('node:test');
+const streamTest = wrap ? test : test.skip;
 const assert = require('node:assert/strict');
-const {generate} = require('../lib/client');
+const client = require('../lib/client');
+const generate = wrap ? wrap(client.generate) : client.generate;
 test('round trips function calls, tool outputs and encrypted reasoning', async() => {
   let body;
   const result = await generate({apiKey: 'test', request: {model: 'model', tools: [{name: 'posts.publish', description: 'publish', inputSchema: {type: 'object'}}],
@@ -18,7 +21,7 @@ test('round trips function calls, tool outputs and encrypted reasoning', async()
   assert.equal(body.parallel_tool_calls, false);
   assert.deepEqual(result.toolCalls, [{id: 'call-2', name: 'posts.get_managed', input: {id: 1}}]);
 });
-test('streams text, reports final usage, and rejects incomplete streams', async() => {
+streamTest('streams text, reports final usage, and rejects incomplete streams', async() => {
   const chunks = [];
   const events = [
     {type: 'response.output_text.delta', delta: '你好'},

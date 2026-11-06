@@ -1,16 +1,15 @@
 'use strict';
 
-const {readStream} = require('./stream');
-
 function baseUrl(accountId) {
   if (!/^[a-f0-9]{32}$/i.test(accountId || '')) throw new TypeError('Cloudflare Account ID is required');
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
 }
 
-async function generate({apiKey, accountId, request, signal, fetchImpl = fetch, reportUsage = () => {}, onText, images}) {
+async function generate({apiKey, accountId, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, images}) {
   if (!apiKey) throw new Error('Cloudflare API token is not configured');
   if (!request.model) throw new TypeError('Cloudflare model ID is required');
   if (request.capability === 'image') return generateImage({apiKey, accountId, request, signal, fetchImpl, reportUsage, images});
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${baseUrl(accountId)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -24,7 +23,8 @@ async function generate({apiKey, accountId, request, signal, fetchImpl = fetch, 
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Cloudflare request failed (HTTP ' + response.status + ')');
-  const payload = onText ? await readStream(response, onText, reportUsage) : await response.json();
+  if (onText) return {...streamResponse(response, 'chat-completions'), provider: 'cloudflare', model: request.model};
+  const payload = await response.json();
   reportUsage(payload.usage, response);
   const output = payload.choices?.[0]?.message?.content;
   if (typeof output !== 'string' || !output.trim()) throw new Error('Cloudflare returned no text output');

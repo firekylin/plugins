@@ -1,8 +1,11 @@
 'use strict';
+const wrap = require('../../../test/helpers/stream-client');
 const test = require('node:test');
+const streamTest = wrap ? test : test.skip;
 const assert = require('node:assert/strict');
-const {generate} = require('../lib/client');
-test('streams fragmented tool arguments and sends normalized tool results', async() => {
+const client = require('../lib/client');
+const generate = wrap ? wrap(client.generate) : client.generate;
+streamTest('streams fragmented tool arguments and sends normalized tool results', async() => {
   let body;
   const frames = [
     {choices: [{delta: {tool_calls: [{index: 0, id: 'call', function: {name: 'posts__publish', arguments: '{"id":'}}]}}]},
