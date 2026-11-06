@@ -3,7 +3,7 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'grok-4.6', label: 'grok-4.6', capabilities: ['text', 'stream']},
+  {id: 'grok-4.6', label: 'grok-4.6', capabilities: ['text', 'stream', 'vision']},
   {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']},
   {id: 'grok-imagine-image-2.0', label: 'grok-imagine-image-2.0', capabilities: ['image']}
 ];
@@ -22,9 +22,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, streamResponse, onText, images}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, images, vision}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images, vision
       })
     });
 

@@ -3,7 +3,7 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'mimo-v2.6-pro', label: 'mimo-v2.6-pro', capabilities: ['text', 'stream']},
+  {id: 'mimo-v2.6-pro', label: 'mimo-v2.6-pro', capabilities: ['text', 'stream', 'vision']},
   {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']}
 ];
 
@@ -21,9 +21,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, vision}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, vision
       })
     });
 

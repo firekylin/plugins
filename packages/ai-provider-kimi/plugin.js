@@ -3,7 +3,8 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'kimi-k2.5', label: 'kimi-k2.5', capabilities: ['text', 'stream']},
+  {id: 'kimi-k3.1-pro', label: 'kimi-k3.1-pro', capabilities: ['text', 'stream', 'vision']},
+  {id: 'kimi-k2.5', label: 'kimi-k2.5（已弃用）', capabilities: ['text', 'stream']},
   {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']}
 ];
 
@@ -21,9 +22,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, vision}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, vision
       })
     });
 
