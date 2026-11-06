@@ -4,6 +4,7 @@ const {baseUrl, generate} = require('./lib/client');
 
 const MODELS = [
   {id: '@cf/openai/gpt-oss-20b', label: '@cf/openai/gpt-oss-20b', capabilities: ['text', 'stream']},
+  {id: '@cf/meta/llama-4-scout-17b-16e-instruct', label: '@cf/meta/llama-4-scout-17b-16e-instruct', capabilities: ['text', 'stream', 'vision']},
   {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']},
   {id: '@cf/black-forest-labs/flux-2-klein-4b', label: '@cf/black-forest-labs/flux-2-klein-4b', capabilities: ['image']}
 ];
@@ -20,9 +21,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: async() => Boolean(accountId && await ctx.ai.credentials.has('apiKey')),
-      generate: async(request, {signal, reportUsage, streamResponse, onText, images}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, images, vision}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), accountId,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images, vision
       })
     });
     ctx.admin.registerForm({

@@ -3,8 +3,8 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'anthropic/claude-sonnet-4.6', label: 'anthropic/claude-sonnet-4.6', capabilities: ['text', 'stream']},
-  {id: 'openai/gpt-5.4', label: 'openai/gpt-5.4', capabilities: ['text', 'stream']},
+  {id: 'anthropic/claude-sonnet-4.6', label: 'anthropic/claude-sonnet-4.6', capabilities: ['text', 'stream', 'vision']},
+  {id: 'openai/gpt-5.4', label: 'openai/gpt-5.4', capabilities: ['text', 'stream', 'vision']},
   {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']},
   {id: 'google/gemini-3.1-flash-image-preview', label: 'google/gemini-3.1-flash-image-preview', capabilities: ['image']}
 ];
@@ -23,9 +23,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, streamResponse, onText, images}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, images, vision}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images, vision
       })
     });
 

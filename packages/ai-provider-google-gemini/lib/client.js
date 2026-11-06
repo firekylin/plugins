@@ -12,14 +12,20 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, images}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, images, vision}) {
   if (!apiKey) throw new Error('Google Gemini API key is not configured');
   if (!request.model) throw new TypeError('Google Gemini model ID is required');
   if (request.capability === 'image' && !images) throw new Error('Image generation requires updated Firekylin core');
   const refs = request.capability === 'image' ? images.inputs(request, 14) : [];
+  const inputImages = message => {
+    if (!message.images?.length) return [];
+    if (!vision?.inputs) throw new Error('Image understanding requires updated Firekylin core (vision API)');
+    return vision.inputs(message);
+  };
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
   const contents = request.messages.filter(message => message.role !== 'system').map(message => ({
-    role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}, ...(message.role === 'user' ? refs : []).map(image => ({inlineData: image}))]
+    role: message.role === 'assistant' ? 'model' : 'user', parts: [...(message.content ? [{text: message.content}] : []),
+      ...[...(message.role === 'user' ? refs : []), ...inputImages(message)].map(image => ({inlineData: image}))]
   }));
   const image = request.capability === 'image';
   if (onText && request.capability !== 'image' && !streamResponse?.supportsCustomParser) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');

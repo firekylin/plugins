@@ -22,3 +22,9 @@ API 参考：https://ai.google.dev/api/generate-content
 流式调用要求 Firekylin core 的 `streamResponse.supportsCustomParser`。本插件的 `lib/stream-parser.js` 只转换协议事件和用量；core 负责读流、解码、大小限制、增量回调及取消。每次请求创建独立解析器；旧 core 会在发出流式请求前收到明确升级提示。
 
 发布顺序：先正式发布包含自定义解析接口的 core，再合并插件发版 PR；仅合并 core 代码不等于已发布。普通生成与图片接口不依赖此扩展。
+
+## 图片理解
+
+内置模型 gemini-3-flash-preview 声明 `vision`，可读取私有聊天中发送的 PNG/JPEG/WebP 图片；`image` 仍表示图片生成/编辑。自定义 ID 不自动视为支持视觉输入。插件将每条用户消息中的 `images` 转为[服务商原生图片输入](https://ai.google.dev/api/generate-content)，包括历史图片、仅图片消息、流式与非流式路径，不创建公开 URL。
+
+需要先正式发布并安装支持 `context.vision.inputs` 的 core 图片附件版本；旧 core 上的图片请求在网络调用前会报错，不会静默忽略图片。本改动基于 plugins#20 的流接口，保留其发布依赖。core 负责完整解码、元数据清除、大小和权限校验；本地模拟请求测试不代表真实服务商调用已验证。

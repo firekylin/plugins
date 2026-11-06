@@ -12,12 +12,20 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, vision}) {
   if (!apiKey) throw new Error('Anthropic API key is not configured');
   if (!request.model) throw new TypeError('Anthropic model ID is required');
+  const inputImages = message => {
+    if (!message.images?.length) return [];
+    if (!vision?.inputs) throw new Error('Image understanding requires updated Firekylin core (vision API)');
+    return vision.inputs(message);
+  };
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
   const messages = request.messages.filter(message => message.role !== 'system').map(message => ({
-    role: message.role === 'assistant' ? 'assistant' : 'user', content: message.content
+    role: message.role === 'assistant' ? 'assistant' : 'user', content: message.images?.length ? [
+      ...inputImages(message).map(image => ({type: 'image', source: {type: 'base64', media_type: image.mimeType, data: image.data}})),
+      ...(message.content ? [{type: 'text', text: message.content}] : [])
+    ] : message.content
   }));
   if (onText && request.capability !== 'image' && !streamResponse?.supportsCustomParser) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/messages`, {

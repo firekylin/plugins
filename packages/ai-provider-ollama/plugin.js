@@ -11,12 +11,13 @@ module.exports = {
     ctx.ai.registerProvider({
       id: 'ollama', label: 'Ollama', description: '通过本地或自托管 Ollama API 使用文本模型。',
       logo: 'https://ollama.com/favicon.ico',
-      models: [{id: 'local', label: '已配置的 Ollama 模型', capabilities: ['text', 'stream']}],
+      models: [{id: 'local', label: '已配置的 Ollama 模型', capabilities: ['text', 'stream']},
+        {id: 'local-vision', label: '已配置的 Ollama 视觉模型（发送前检测）', capabilities: ['text', 'stream', 'vision']}],
       usageAdapter: {fields: {inputTokens: 'prompt_eval_count', outputTokens: 'eval_count'}},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => Boolean(modelId),
-      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
-        baseUrl, request: {...request, model: modelId}, signal, reportUsage, streamResponse, onText
+      generate: async(request, {signal, reportUsage, streamResponse, onText, vision}) => generate({
+        baseUrl, request: {...request, model: modelId}, signal, reportUsage, streamResponse, onText, vision
       })
     });
     ctx.admin.registerForm({
@@ -40,10 +41,10 @@ module.exports = {
     ctx.admin.registerAction({
       id: 'test-connection', label: '测试连接', type: 'primary',
       handler: async input => {
-        if (input?.model && input.model !== 'local') throw new TypeError('Invalid Ollama model');
+        if (input?.model && !['local', 'local-vision'].includes(input.model)) throw new TypeError('Invalid Ollama model');
         if (!modelId) throw new TypeError('Ollama model ID is required');
         const result = await ctx.ai.generate({
-          provider: 'ollama', model: 'local',
+          provider: 'ollama', model: input?.model || 'local',
           messages: [{role: 'user', content: 'Reply with OK only.'}]
         });
         return {message: `连接成功：${result.model}`};

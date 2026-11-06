@@ -10,16 +10,23 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, vision}) {
   if (!apiKey) throw new Error('小米 MiMo API key is not configured');
   if (!request.model) throw new TypeError('小米 MiMo model ID is required');
   if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
+  const content = message => {
+    if (!message.images?.length) return message.content;
+    if (!vision?.inputs) throw new Error('Image understanding requires updated Firekylin core (vision API)');
+    const inputs = vision.inputs(message);
+    return [...(message.content ? [{type: 'text', text: message.content}] : []),
+      ...inputs.map(image => ({type: 'image_url', image_url: {url: `data:${image.mimeType};base64,${image.data}`}}))];
+  };
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
     body: JSON.stringify({
       model: request.model,
-      messages: request.messages.map(message => ({role: message.role, content: message.content})),
+      messages: request.messages.map(message => ({role: message.role, content: content(message)})),
       stream: Boolean(onText),
       ...(onText ? {stream_options: {include_usage: true}} : {}),
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
