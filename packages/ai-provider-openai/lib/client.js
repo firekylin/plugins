@@ -16,10 +16,15 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, images, onText}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, images, onText, vision}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
   if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
   if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
+  const inputImages = message => {
+    if (!message.images?.length) return [];
+    if (!vision?.inputs) throw new Error('Image understanding requires updated Firekylin core (vision API)');
+    return vision.inputs(message);
+  };
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -28,7 +33,10 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
       ...(request.tools?.length ? {store: false, include: ['reasoning.encrypted_content']} : {}),
       input: request.messages.flatMap(message => message.role === 'tool'
         ? [{type: 'function_call_output', call_id: message.toolCallId, output: message.content}]
-        : [...(message.providerData?.openai || []), ...(message.content ? [{role: message.role, content: message.content}] : []),
+        : [...(message.providerData?.openai || []), ...((message.content || message.images?.length) ? [{role: message.role, content: message.images?.length ? [
+            ...(message.content ? [{type: 'input_text', text: message.content}] : []),
+            ...inputImages(message).map(image => ({type: 'input_image', image_url: `data:${image.mimeType};base64,${image.data}`}))
+          ] : message.content}] : []),
           ...(message.toolCalls || []).map(call => ({type: 'function_call', call_id: call.id,
             name: call.name.replace(/\./g, '__'), arguments: JSON.stringify(call.input)}))]),
       ...(request.tools?.length ? {tools: request.tools.map(tool => ({type: 'function',
