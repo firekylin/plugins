@@ -1,5 +1,7 @@
 'use strict';
 
+const createStreamParser = require('./stream-parser');
+
 const DEFAULT_BASE_URL = 'https://api.anthropic.com/v1';
 
 function normalizeBaseUrl(value) {
@@ -17,7 +19,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   const messages = request.messages.filter(message => message.role !== 'system').map(message => ({
     role: message.role === 'assistant' ? 'assistant' : 'user', content: message.content
   }));
-  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
+  if (onText && request.capability !== 'image' && !streamResponse?.supportsCustomParser) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/messages`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
@@ -28,7 +30,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Anthropic request failed (HTTP ' + response.status + ')');
-  if (onText) return {...streamResponse(response, 'anthropic'), provider: 'anthropic', model: request.model};
+  if (onText) return {...streamResponse(response, createStreamParser()), provider: 'anthropic', model: request.model};
   const payload = await response.json();
   reportUsage(payload.usage, response);
   const output = (payload.content || []).filter(item => item.type === 'text' && typeof item.text === 'string')

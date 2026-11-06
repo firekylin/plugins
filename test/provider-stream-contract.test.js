@@ -16,10 +16,14 @@ for (const id of ids) {
     t.after(() => {global.fetch = previous});
     global.fetch = async() => response;
     const result = await provider.generate({model: 'test', messages: [{role: 'user', content: 'hi'}]}, {
-      onText() {throw new Error('core owns callbacks')}, streamResponse: (stream, protocol) => ({stream, protocol})
+      onText() {throw new Error('core owns callbacks')}, streamResponse: Object.assign((stream, protocol) => ({stream, protocol}), {supportsCustomParser: true})
     });
     assert.equal(result.stream, response);
-    assert.equal(result.protocol, {openai: 'responses', anthropic: 'anthropic', 'google-gemini': 'gemini', ollama: 'ollama'}[id] || 'chat-completions');
+    if (['anthropic', 'google-gemini'].includes(id)) {
+      assert.equal(result.protocol.format, 'sse');
+      assert.equal(typeof result.protocol.parse, 'function');
+      await assert.rejects(provider.generate({model: 'test', messages: []}, {onText() {}, streamResponse() {}}), /updated Firekylin core/);
+    } else assert.equal(result.protocol, {openai: 'responses', ollama: 'ollama'}[id] || 'chat-completions');
     assert.equal(result.provider, id);
     await assert.rejects(provider.generate({model: 'test', messages: []}, {onText() {}}), /updated Firekylin core/);
   });

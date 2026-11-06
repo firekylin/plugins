@@ -19,4 +19,6 @@ API 参考：https://ai.google.dev/api/generate-content
 
 文本生成支持 `onText(delta)` 增量回调（模型能力 `stream`），同时返回完整文本与最终用量。未传回调时保留普通 JSON 请求；图片请求仍使用原有接口。流错误、无输出或缺少协议结束标记会拒绝请求，取消信号传递给底层 fetch。自定义模型需要支持相应服务商的流式协议；此能力不代表支持博客工具调用。
 
-流式调用要求 Firekylin core 提供 `context.streamResponse(response, protocol)`。Provider 返回原始流，由 core 统一解析、触发回调并保留用量；旧 core 会收到明确的升级提示。
+流式调用要求 Firekylin core 的 `streamResponse.supportsCustomParser`。本插件的 `lib/stream-parser.js` 只转换协议事件和用量；core 负责读流、解码、大小限制、增量回调及取消。每次请求创建独立解析器；旧 core 会在发出流式请求前收到明确升级提示。
+
+发布顺序：先正式发布包含自定义解析接口的 core，再合并插件发版 PR；仅合并 core 代码不等于已发布。普通生成与图片接口不依赖此扩展。

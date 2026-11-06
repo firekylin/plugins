@@ -1,5 +1,7 @@
 'use strict';
 
+const createStreamParser = require('./stream-parser');
+
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 function normalizeBaseUrl(value) {
@@ -20,7 +22,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
     role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.content}, ...(message.role === 'user' ? refs : []).map(image => ({inlineData: image}))]
   }));
   const image = request.capability === 'image';
-  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
+  if (onText && request.capability !== 'image' && !streamResponse?.supportsCustomParser) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/models/${encodeURIComponent(request.model)}:${onText && !image ? 'streamGenerateContent?alt=sse' : 'generateContent'}`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
@@ -31,7 +33,7 @@ async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, re
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Google Gemini request failed (HTTP ' + response.status + ')');
-  if (onText && !image) return {...streamResponse(response, 'gemini'), provider: 'google-gemini', model: request.model};
+  if (onText && !image) return {...streamResponse(response, createStreamParser()), provider: 'google-gemini', model: request.model};
   const payload = await response.json();
   reportUsage(payload.usageMetadata, response);
   const parts = payload.candidates?.[0]?.content?.parts || [];
