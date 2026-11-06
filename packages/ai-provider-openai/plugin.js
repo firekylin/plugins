@@ -3,10 +3,10 @@
 const {DEFAULT_BASE_URL, generate, normalizeBaseUrl} = require('./lib/client');
 
 const MODELS = [
-  {id: 'gpt-5.4', label: 'GPT-5.4', capabilities: ['text']},
-  {id: 'gpt-5-mini', label: 'GPT-5 mini', capabilities: ['text']},
-  {id: 'gpt-5-nano', label: 'GPT-5 nano', capabilities: ['text']},
-  {id: 'gpt-4.1', label: 'GPT-4.1', capabilities: ['text']},
+  {id: 'gpt-5.4', label: 'GPT-5.4', capabilities: ['text', 'tools', 'stream']},
+  {id: 'gpt-5-mini', label: 'GPT-5 mini', capabilities: ['text', 'tools', 'stream']},
+  {id: 'gpt-5-nano', label: 'GPT-5 nano', capabilities: ['text', 'tools', 'stream']},
+  {id: 'gpt-4.1', label: 'GPT-4.1', capabilities: ['text', 'tools', 'stream']},
   {id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst', capabilities: ['image']},
   {id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare', capabilities: ['image']},
   {id: 'gpt-image-2', label: 'gpt-image-2', capabilities: ['image']},
@@ -27,8 +27,8 @@ module.exports = {
       usageAdapter: {protocol: 'responses'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, images}) => generate({
-        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, images
+      generate: async(request, {signal, reportUsage, streamResponse, images, onText}) => generate({
+        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, streamResponse, images, onText
       })
     });
 

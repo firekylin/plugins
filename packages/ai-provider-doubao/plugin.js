@@ -3,8 +3,8 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'doubao-seed-2-1-pro-260628', label: 'doubao-seed-2-1-pro-260628', capabilities: ['text']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']},
+  {id: 'doubao-seed-2-1-pro-260628', label: 'doubao-seed-2-1-pro-260628', capabilities: ['text', 'stream']},
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']},
   {id: 'doubao-seedream-4-5-251128', label: 'doubao-seedream-4-5-251128', capabilities: ['image']}
 ];
 
@@ -22,9 +22,9 @@ module.exports = {
       usageAdapter: {protocol: 'chat-completions'},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, images}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, images}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, images
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images
       })
     });
 

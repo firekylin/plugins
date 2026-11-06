@@ -5,3 +5,5 @@ Connects Firekylin's internal AI service API to DeepSeek's Chat Completions API.
 After installation, open **AI 连接**, select **DeepSeek**, save your API key and click **测试连接**. You can also choose a model and explicitly set it as the global default on the same page. Saving connection settings alone does not change the default. The default endpoint is `https://api.deepseek.com`; a custom HTTPS endpoint can be configured. The saved key is never returned to the browser and is stored through Firekylin's encrypted, plugin-scoped credential store.
 
 For production, set `FIREKYLIN_AI_CREDENTIAL_KEY` to a stable secret before saving credentials. The connection test makes a small, billable request to DeepSeek. Do not put API keys in Git or PR comments.
+
+流式调用要求 Firekylin core 提供 `context.streamResponse(response, protocol)`。Provider 返回原始流，由 core 统一解析、触发回调并保留用量；旧 core 会收到明确的升级提示。

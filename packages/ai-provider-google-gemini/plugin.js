@@ -3,9 +3,9 @@
 const {DEFAULT_BASE_URL, normalizeBaseUrl, generate} = require('./lib/client');
 
 const MODELS = [
-  {id: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview', capabilities: ['text']},
+  {id: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview', capabilities: ['text', 'stream']},
   {id: 'gemini-3.1-flash-image', label: 'gemini-3.1-flash-image', capabilities: ['image']},
-  {id: 'custom', label: '自定义模型 ID', capabilities: ['text']}
+  {id: 'custom', label: '自定义模型 ID', capabilities: ['text', 'stream']}
 ];
 
 module.exports = {
@@ -25,9 +25,9 @@ module.exports = {
       }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage, images}) => generate({
+      generate: async(request, {signal, reportUsage, streamResponse, onText, images}) => generate({
         apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl,
-        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, images
+        request: {...request, model: request.model === 'custom' ? customModel : request.model}, signal, reportUsage, streamResponse, onText, images
       })
     });
     ctx.admin.registerForm({

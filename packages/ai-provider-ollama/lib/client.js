@@ -12,20 +12,22 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
   if (!request.model) throw new TypeError('Ollama model ID is required');
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/api/chat`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       model: request.model, messages: request.messages.map(message => ({
         role: message.role, content: message.content
-      })), stream: false,
+      })), stream: Boolean(onText),
       ...(request.maxOutputTokens ? {options: {num_predict: request.maxOutputTokens}} : {})
     })
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Ollama request failed (HTTP ' + response.status + ')');
+  if (onText) return {...streamResponse(response, 'ollama'), provider: 'ollama', model: request.model};
   const payload = await response.json();
   reportUsage(payload, response);
   const output = payload.message?.content;

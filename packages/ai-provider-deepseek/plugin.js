@@ -3,8 +3,8 @@
 const {DEFAULT_BASE_URL, generate, normalizeBaseUrl} = require('./lib/client');
 
 const MODELS = [
-  {id: 'deepseek-flash', label: 'DeepSeek Flash', capabilities: ['text']},
-  {id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', capabilities: ['text']}
+  {id: 'deepseek-flash', label: 'DeepSeek Flash', capabilities: ['text', 'tools', 'stream']},
+  {id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', capabilities: ['text', 'tools', 'stream']}
 ];
 
 module.exports = {
@@ -22,8 +22,8 @@ module.exports = {
       }},
       admin: {formId: 'settings', testActionId: 'test-connection'},
       configured: () => ctx.ai.credentials.has('apiKey'),
-      generate: async(request, {signal, reportUsage}) => generate({
-        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage
+      generate: async(request, {signal, reportUsage, streamResponse, onText}) => generate({
+        apiKey: await ctx.ai.credentials.get('apiKey'), baseUrl, request, signal, reportUsage, streamResponse, onText
       })
     });
 

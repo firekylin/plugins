@@ -10,22 +10,25 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText, images}) {
   if (!apiKey) throw new Error('豆包 API key is not configured');
   if (!request.model) throw new TypeError('豆包 model ID is required');
   if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/chat/completions`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
     body: JSON.stringify({
       model: request.model,
       messages: request.messages.map(message => ({role: message.role, content: message.content})),
-      stream: false,
+      stream: Boolean(onText),
+      ...(onText ? {stream_options: {include_usage: true}} : {}),
       ...(request.maxOutputTokens ? {max_tokens: request.maxOutputTokens} : {})
     })
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('豆包 request failed (HTTP ' + response.status + ')');
+  if (onText) return {...streamResponse(response, 'chat-completions'), provider: 'doubao', model: request.model};
   const payload = await response.json();
   reportUsage(payload.usage, response);
   const output = payload.choices?.[0]?.message?.content;

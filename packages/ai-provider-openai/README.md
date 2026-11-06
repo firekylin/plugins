@@ -19,3 +19,5 @@ GPT Image 使用 `/images/generations`；提供参考图时改用 multipart `/im
 接口说明：https://developers.openai.com/api/docs/guides/image-generation
 
 公共图片处理由 Firekylin core 通过服务商调用上下文的 `images` 提供，本插件不内置重复实现。请先升级到包含该 API 的 core（firekylin/firekylin#952），再升级插件；旧 core 的图片请求会明确提示需要升级，文本调用不受影响。
+
+流式调用要求 Firekylin core 提供 `context.streamResponse(response, protocol)`。Provider 返回原始流，由 core 统一解析、触发回调并保留用量；旧 core 会收到明确的升级提示。

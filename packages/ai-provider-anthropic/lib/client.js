@@ -1,5 +1,7 @@
 'use strict';
 
+const createStreamParser = require('./stream-parser');
+
 const DEFAULT_BASE_URL = 'https://api.anthropic.com/v1';
 
 function normalizeBaseUrl(value) {
@@ -10,23 +12,25 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, onText}) {
   if (!apiKey) throw new Error('Anthropic API key is not configured');
   if (!request.model) throw new TypeError('Anthropic model ID is required');
   const system = request.messages.filter(message => message.role === 'system').map(message => message.content).join('\n');
   const messages = request.messages.filter(message => message.role !== 'system').map(message => ({
     role: message.role === 'assistant' ? 'assistant' : 'user', content: message.content
   }));
+  if (onText && request.capability !== 'image' && !streamResponse?.supportsCustomParser) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/messages`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
     body: JSON.stringify({
-      model: request.model, messages, max_tokens: request.maxOutputTokens || 2048,
+      model: request.model, messages, ...(onText ? {stream: true} : {}), max_tokens: request.maxOutputTokens || 2048,
       ...(system ? {system} : {})
     })
   });
   reportUsage(undefined, response);
   if (!response.ok) throw new Error('Anthropic request failed (HTTP ' + response.status + ')');
+  if (onText) return {...streamResponse(response, createStreamParser()), provider: 'anthropic', model: request.model};
   const payload = await response.json();
   reportUsage(payload.usage, response);
   const output = (payload.content || []).filter(item => item.type === 'text' && typeof item.text === 'string')

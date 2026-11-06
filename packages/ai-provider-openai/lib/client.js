@@ -16,29 +16,46 @@ function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, images}) {
+async function generate({apiKey, baseUrl, request, signal, fetchImpl = fetch, reportUsage = () => {}, streamResponse, images, onText}) {
   if (!apiKey) throw new Error('OpenAI API key is not configured');
   if (request.capability === 'image') return generateImage({apiKey, baseUrl, request, signal, fetchImpl, reportUsage, images});
+  if (onText && request.capability !== 'image' && !streamResponse) throw new Error('Streaming requires updated Firekylin core (streamResponse API)');
   const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/responses`, {
     method: 'POST', signal,
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
     body: JSON.stringify({
       model: request.model,
-      input: request.messages.map(message => ({role: message.role, content: message.content})),
+      ...(request.tools?.length ? {store: false, include: ['reasoning.encrypted_content']} : {}),
+      input: request.messages.flatMap(message => message.role === 'tool'
+        ? [{type: 'function_call_output', call_id: message.toolCallId, output: message.content}]
+        : [...(message.providerData?.openai || []), ...(message.content ? [{role: message.role, content: message.content}] : []),
+          ...(message.toolCalls || []).map(call => ({type: 'function_call', call_id: call.id,
+            name: call.name.replace(/\./g, '__'), arguments: JSON.stringify(call.input)}))]),
+      ...(request.tools?.length ? {tools: request.tools.map(tool => ({type: 'function',
+        name: tool.name.replace(/\./g, '__'), description: tool.description, parameters: tool.inputSchema,
+        strict: false})), parallel_tool_calls: false} : {}),
+      ...(onText ? {stream: true} : {}),
       ...(request.reasoningEffort ? {reasoning: {effort: request.reasoningEffort}} : {}),
       ...(request.maxOutputTokens ? {max_output_tokens: request.maxOutputTokens} : {})
     })
   });
   reportUsage(undefined, response);
-  const payload = await response.json().catch(() => ({}));
+  let payload;
+  if (onText && response.ok && response.headers?.get('content-type')?.includes('text/event-stream')) {
+    return {...streamResponse(response, 'responses'), provider: 'openai', model: request.model};
+  } else payload = await response.json().catch(() => ({}));
   reportUsage(payload.usage, response);
   if (!response.ok) {
     const message = payload.error && payload.error.message ? payload.error.message : `HTTP ${response.status}`;
     throw new Error(`OpenAI request failed: ${message}`);
   }
+  if (['incomplete', 'failed'].includes(payload.status)) throw new Error('OpenAI response incomplete');
   const text = outputText(payload);
-  if (!text) throw new Error('OpenAI returned no text output');
-  return {text, provider: 'openai', model: request.model, usage: payload.usage || undefined};
+  const toolCalls = (payload.output || []).filter(item => item.type === 'function_call').map(item => ({
+    id: item.call_id, name: item.name.replace(/__/g, '.'), input: JSON.parse(item.arguments)
+  }));
+  if (!text && !toolCalls.length) throw new Error('OpenAI returned no text output');
+  return {text, ...(toolCalls.length ? {toolCalls, providerData: {openai: (payload.output || []).filter(item => item.type === 'reasoning')}} : {}), provider: 'openai', model: request.model, usage: payload.usage || undefined};
 }
 
 module.exports = {DEFAULT_BASE_URL, normalizeBaseUrl, outputText, generate};
