@@ -90,6 +90,10 @@ Encrypt Key 和允许发布者的 OpenID 填入插件设置。事件订阅选择
 https://example.com/api/plugins/say/feishu
 ```
 
+保存请求地址时，插件会解密（如有）并校验 URL verification 的 Verification Token，
+直接返回顶层 `challenge`；该校验请求不要求普通事件的签名请求头。
+实际消息推送仍需通过签名、时间戳、Token 和 App ID 检查，且只有白名单中的 OpenID 可以发布。
+
 在“事件与回调”中订阅 `im.message.receive_v1`（接收消息 v2.0），并为应用开通接收单聊消息；
 如需在群聊使用，则开通接收群聊中 @ 机器人的消息。配置 Encrypt Key 后，插件会校验
 `X-Lark-Signature`、拒绝超过五分钟的请求，并解密事件内容。

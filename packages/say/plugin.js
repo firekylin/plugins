@@ -268,15 +268,33 @@ async function feishuCallback({ctx: request, body}) {
   if (!settings.enabled || !settings.feishuAppId || !settings.feishuVerificationToken ||
       !settings.feishuEncryptKey) return request.throw(503, 'Feishu callback is not configured');
   const rawBody = rawJsonRequestBody(request, body);
+  let payload;
+  try {
+    const envelope = typeof body === 'object' && body ? body : JSON.parse(rawBody);
+    payload = envelope.encrypt ? decryptFeishu(envelope.encrypt, settings.feishuEncryptKey) : envelope;
+  } catch {
+    return request.throw(400, 'Invalid Feishu payload');
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return request.throw(400, 'Invalid Feishu payload');
+  }
+  // URL verification is authenticated by its token, not the event signature.
+  // Only this explicit request type may bypass ordinary event verification.
+  if (payload.type === 'url_verification') {
+    if (!secureEqual(payload.token, settings.feishuVerificationToken)) {
+      return request.throw(401, 'Invalid Feishu verification token');
+    }
+    if (typeof payload.challenge !== 'string' || !payload.challenge) {
+      return request.throw(400, 'Invalid Feishu challenge');
+    }
+    return {challenge: payload.challenge};
+  }
   if (!verifyFeishu({timestamp: request.get('X-Lark-Request-Timestamp'),
     nonce: request.get('X-Lark-Request-Nonce'), encryptKey: settings.feishuEncryptKey, body: rawBody,
     value: request.get('X-Lark-Signature')})) return request.throw(401, 'Invalid Feishu signature');
-  const envelope = typeof body === 'object' && body ? body : JSON.parse(rawBody);
-  const payload = envelope.encrypt ? decryptFeishu(envelope.encrypt, settings.feishuEncryptKey) : envelope;
   if (!secureEqual(feishuEventToken(payload), settings.feishuVerificationToken)) {
     return request.throw(401, 'Invalid Feishu verification token');
   }
-  if (payload.challenge) return {challenge: payload.challenge};
   if (payload.header?.app_id && payload.header.app_id !== settings.feishuAppId) {
     return request.throw(401, 'Invalid Feishu app ID');
   }
