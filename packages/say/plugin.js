@@ -312,6 +312,19 @@ module.exports = {
   register(ctx) {
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
     pluginLogger = ctx.logger;
+    // A page batch shares one request context. Never reuse settings across requests.
+    const settingsLoads = new WeakMap();
+    const registerSettingsForm = definition => {
+      ctx.admin.registerForm({...definition, load: async context => {
+        const cacheable = context && typeof context === 'object';
+        let pending = cacheable && settingsLoads.get(context);
+        if (!pending) {
+          pending = service.settings();
+          if (cacheable) settingsLoads.set(context, pending);
+        }
+        return {...await pending};
+      }});
+    };
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
         const result = await service.list({publicOnly: true, page: this.parameter.page,
@@ -446,32 +459,32 @@ module.exports = {
     ctx.admin.registerAction({id: 'delete-says', page: 'manage', label: '删除', type: 'danger',
       confirm: '确定删除选中的碎语吗？', handler: async input =>
         ({message: `已删除 ${await service.remove(input.ids)} 条碎语。`})});
-    ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '基础设置', submitLabel: '保存基础设置', fields: [
+    registerSettingsForm({id: 'say-basic-settings', page: 'settings', title: '基础设置', submitLabel: '保存基础设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
         description: '外部 API、企业微信、微信公众号和飞书发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'}
-    ], load: async() => service.settings(), submit: async values => {
+    ], submit: async values => {
       await service.saveSettings(values); return {message: '基础设置已保存。'};
     }});
-    ctx.admin.registerForm({id: 'say-external-settings', page: 'settings', title: '外部发布',
+    registerSettingsForm({id: 'say-external-settings', page: 'settings', title: '外部发布',
       submitLabel: '保存外部发布设置', fields: [
         {name: 'apiKey', type: 'password', label: '外部发布 API Key',
           description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'}
-      ], load: async() => service.settings(), submit: async values => {
+      ], submit: async values => {
         await service.saveSettings(values); return {message: '外部发布设置已保存。'};
       }});
-    ctx.admin.registerForm({id: 'say-wecom-settings', page: 'settings', title: '企业微信发布',
+    registerSettingsForm({id: 'say-wecom-settings', page: 'settings', title: '企业微信发布',
       submitLabel: '保存企业微信设置', fields: [
       {name: 'wecomCorpId', type: 'text', label: '企业微信 CorpID'},
       {name: 'wecomCorpSecret', type: 'password', label: '企业微信 CorpSecret', description: '用于下载图片和语音；留空会保留原值。'},
       {name: 'wecomToken', type: 'password', label: '企业微信回调 Token', description: '留空会保留原值。'},
       {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'}
-    ], load: async() => service.settings(), submit: async values => {
+    ], submit: async values => {
       await service.saveSettings(values); return {message: '企业微信设置已保存。'};
     }});
-    ctx.admin.registerForm({id: 'say-wechat-settings', page: 'settings', title: '微信公众号发布',
+    registerSettingsForm({id: 'say-wechat-settings', page: 'settings', title: '微信公众号发布',
       submitLabel: '保存微信公众号设置', fields: [
       {name: 'wechatAppId', type: 'text', label: '公众号 AppID'},
       {name: 'wechatAppSecret', type: 'password', label: '公众号 AppSecret',
@@ -481,10 +494,10 @@ module.exports = {
         description: '服务器配置需要选择安全模式；留空会保留原值。'},
       {name: 'wechatAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
         description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'}
-    ], load: async() => service.settings(), submit: async values => {
+    ], submit: async values => {
       await service.saveSettings(values); return {message: '微信公众号设置已保存。'};
     }});
-    ctx.admin.registerForm({id: 'say-feishu-settings', page: 'settings', title: '飞书发布',
+    registerSettingsForm({id: 'say-feishu-settings', page: 'settings', title: '飞书发布',
       submitLabel: '保存飞书设置', fields: [
       {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
       {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
@@ -495,7 +508,7 @@ module.exports = {
         description: '用于回调签名校验和事件解密；留空会保留原值。'},
       {name: 'feishuAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
         description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
-    ], load: async() => service.settings(), submit: async values => {
+    ], submit: async values => {
       await service.saveSettings(values); return {message: '飞书设置已保存。'};
     }});
   }
