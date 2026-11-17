@@ -26,40 +26,89 @@ function setup(t) {
   return {forms: forms.filter(form => form.page === 'settings'), pages, settings, load};
 }
 
-test('registers all five settings resources including Feishu and references only registered forms', async t => {
-  const {forms, pages} = setup(t);
-  assert.equal(forms.length, 5);
-  assert.ok(forms.find(form => form.id === 'say-feishu-settings'));
-  const refs = [];
-  const visit = sections => sections.forEach(section => {
-    if (section.type === 'form') refs.push(section.id);
-    if (section.type === 'tabs') section.items.forEach(tab => visit(tab.sections));
-  });
-  visit((await pages.find(page => page.id === 'settings').load()).sections);
-  assert.deepEqual(refs.sort(), forms.map(form => form.id).sort());
+test('references one registered settings resource, not a separate Feishu endpoint', async t => {
+  const {forms, pages, load} = setup(t);
+  assert.deepEqual(forms.map(form => form.id), ['say-basic-settings']);
+  const page = await pages.find(page => page.id === 'settings').load();
+  assert.equal(load.mock.callCount(), 0);
+  assert.deepEqual(page.sections.filter(section => section.type === 'form').map(section => section.id),
+    ['say-basic-settings']);
+  assert.ok(!page.sections.some(section => section.type === 'tabs'));
+  await forms[0].load();
+  assert.equal(load.mock.callCount(), 1);
 });
 
-test('shares one read within a page request but reloads fresh values in subsequent requests', async t => {
-  const {forms, settings, load} = setup(t);
-  const context = {};
-  await Promise.all(forms.map(form => form.load(context)));
+test('loads all existing settings once and reads fresh values on a new load', async t => {
+  const {forms: [form], settings, load} = setup(t);
+  assert.deepEqual(await form.load(), {...settings, settingsGroup: 'external'});
   assert.equal(load.mock.callCount(), 1);
   settings.feishuAppId = 'cli_updated';
-  const feishu = forms.find(form => form.id === 'say-feishu-settings');
-  assert.equal((await feishu.load({})).feishuAppId, 'cli_updated');
+  assert.equal((await form.load()).feishuAppId, 'cli_updated');
   assert.equal(load.mock.callCount(), 2);
-  await feishu.load();
-  await feishu.load();
-  assert.equal(load.mock.callCount(), 4);
 });
 
-test('keeps independent group submissions', async t => {
-  const {forms} = setup(t);
+test('keeps every setting in the unified form and groups all four publishing methods', t => {
+  const {forms: [form], settings} = setup(t);
+  const selector = form.fields.find(field => field.name === 'settingsGroup');
+  assert.equal(selector.type, 'radio');
+  assert.deepEqual(selector.options.map(option => option.value), ['external', 'wecom', 'wechat', 'feishu']);
+  assert.deepEqual(form.fields.filter(field => field !== selector).map(field => field.name).sort(),
+    Object.keys(settings).sort());
+  assert.equal(new Set(form.fields.map(field => field.name)).size, form.fields.length);
+  for (const group of selector.options.map(option => option.value)) {
+    const fields = form.fields.filter(field => field.visibleWhen?.values.includes(group));
+    assert.ok(fields.length > 0);
+    for (const field of fields) {
+      assert.equal(field.visibleWhen.field, selector.name);
+      assert.deepEqual(field.visibleWhen.values, [group]);
+      assert.ok(group === 'external' ? field.name === 'apiKey' : field.name.startsWith(group));
+    }
+  }
+  assert.ok(form.fields.find(field => field.name === 'enabled').visibleWhen === undefined);
+});
+
+test('submits the visible values without persisting the display selector', async t => {
+  const {forms: [form]} = setup(t);
   const writes = [];
   t.mock.method(SayService.prototype, 'saveSettings', async values => writes.push(values));
-  for (const form of forms) {
-    const input = {[form.fields[0].name]: 'value'};
-    assert.match((await form.submit(input)).message, /已保存/);
-    assert.deepEqual(writes.at(-1), input);
+  const input = {settingsGroup: 'feishu', enabled: false, pageSize: 30, authorId: 2,
+    amapKey: '', feishuAppId: 'cli_changed', feishuAppSecret: ''};
+  assert.match((await form.submit(input)).message, /已保存/);
+  const {settingsGroup, ...expected} = input;
+  assert.deepEqual(writes[0], expected);
+  assert.equal(input.settingsGroup, 'feishu');
+});
+
+test('saving each visible group preserves the other providers and supports clearing non-secret fields', async t => {
+  const {forms: [form], settings} = setup(t);
+  let stored = {...settings};
+  t.mock.method(SayService.prototype, 'settings', async() => ({...stored}));
+  const previousThink = global.think;
+  t.after(() => {
+    if (previousThink === undefined) delete global.think;
+    else global.think = previousThink;
+  });
+  global.think = {model: () => ({
+    updateOptions: async(key, value) => {
+      assert.equal(key, 'plugin_say_settings');
+      stored = JSON.parse(value);
+    }
+  })};
+  const changes = {external: {apiKey: 'new-api-key-at-least-16'},
+    wecom: {wecomCorpId: 'corp_updated', wecomCorpSecret: ''},
+    wechat: {wechatAppId: '', wechatAllowedOpenIds: ''},
+    feishu: {feishuAppId: 'cli_updated', feishuAllowedOpenIds: ''}};
+  for (const [settingsGroup, values] of Object.entries(changes)) {
+    const before = {...stored};
+    await form.submit({settingsGroup, ...values, pageSize: 30});
+    for (const name of Object.keys(before)) {
+      if (name === 'pageSize') assert.equal(stored[name], 30);
+      else if (name === 'wecomCorpSecret') assert.equal(stored[name], before[name]);
+      else assert.equal(stored[name], Object.hasOwn(values, name) ? values[name] : before[name]);
+    }
+    assert.ok(!Object.hasOwn(stored, 'settingsGroup'));
+    const reloaded = await form.load();
+    assert.equal(reloaded.pageSize, 30);
+    assert.equal(reloaded.settingsGroup, 'external');
   }
 });
