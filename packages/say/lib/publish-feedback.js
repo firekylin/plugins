@@ -39,7 +39,10 @@ function diagnostic(error, fallback = 'process') {
     ? `（飞书错误码 ${cause.feishuCode}）`
     : Number.isInteger(cause?.httpStatus) && cause.httpStatus >= 400 && cause.httpStatus <= 599
       ? `（HTTP ${cause.httpStatus}）` : '';
-  const systemHints = {PLUGIN_MEDIA_DENIED: '插件媒体权限不足或插件已停用，请检查插件状态及授权。',
+  const systemHints = {MEDIA_TYPE_UNSUPPORTED: '平台返回的附件类型暂不支持，请根据参考编号查看文件类型诊断。',
+    MEDIA_TYPE_MISMATCH: '附件内容无法识别或与声明的类型不一致，请根据参考编号查看格式诊断。',
+    MEDIA_SIZE_INVALID: '附件为空或超过 20 MB，请检查文件大小。',
+    PLUGIN_MEDIA_DENIED: '插件媒体权限不足或插件已停用，请检查插件状态及授权。',
     MEDIA_OWNER_DENIED: '配置的作者不可用或无上传权限，请检查作者账号。',
     ECONNREFUSED: '连接被拒绝，请检查数据库或上游服务是否可访问。',
     ETIMEDOUT: '连接超时，请检查网络和服务状态。',
@@ -68,7 +71,8 @@ function diagnostic(error, fallback = 'process') {
 const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'TimeoutError',
   'AbortError', 'AggregateError', 'DatabaseError', 'QueryFailedError', 'SequelizeDatabaseError',
   'SequelizeConnectionError', 'SequelizeValidationError', 'AxiosError', 'FetchError']);
-const errorCodes = new Set(['MEDIA_REGISTRATION_FAILED', 'PLUGIN_MEDIA_DENIED', 'MEDIA_OWNER_DENIED',
+const errorCodes = new Set(['MEDIA_TYPE_UNSUPPORTED', 'MEDIA_TYPE_MISMATCH', 'MEDIA_SIZE_INVALID',
+  'MEDIA_REGISTRATION_FAILED', 'PLUGIN_MEDIA_DENIED', 'MEDIA_OWNER_DENIED',
   'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
   'EPIPE', 'EACCES', 'ENOSPC', 'ENOENT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
   'UND_ERR_SOCKET', '28P01', '42501', '23502', '23503', '23505', '42P01', '42703', '53300',
@@ -77,6 +81,12 @@ const errorCodes = new Set(['MEDIA_REGISTRATION_FAILED', 'PLUGIN_MEDIA_DENIED', 
   'ER_LOCK_WAIT_TIMEOUT', 'PROTOCOL_CONNECTION_LOST', 'SQLITE_BUSY', 'SQLITE_CONSTRAINT',
   'SQLITE_READONLY', 'SQLITE_FULL', 'SQLITE_ERROR', 'AccessDenied', 'InvalidAccessKeyId',
   'SignatureDoesNotMatch', 'NoSuchBucket', 'RequestTimeout', 'SlowDown', 'ExpiredToken']);
+
+// Only known media labels are logged; never serialize arbitrary upstream headers or bytes.
+const diagnosticMimes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'audio/mpeg', 'audio/amr', 'audio/amr-wb', 'audio/ogg', 'audio/opus', 'audio/aac',
+  'audio/mp4', 'audio/x-m4a', 'audio/silk', 'audio/wav', 'audio/x-wav',
+  'application/octet-stream', 'application/ogg', 'video/mp4', 'unknown']);
 
 function logDetails(error, fallback = 'process') {
   const stage = Object.hasOwn(stages, error?.sayStage) ? error.sayStage
@@ -87,6 +97,14 @@ function logDetails(error, fallback = 'process') {
     seen.add(cause);
     const detail = {type: errorNames.has(cause.name) ? cause.name : 'UnknownError'};
     if (errorCodes.has(cause.code)) detail.code = cause.code;
+    if (['MEDIA_TYPE_UNSUPPORTED', 'MEDIA_TYPE_MISMATCH', 'MEDIA_SIZE_INVALID'].includes(cause.code)) {
+      const media = cause.media || {};
+      detail.media = {
+        mime: diagnosticMimes.has(media.mime) ? media.mime : 'other',
+        detected: diagnosticMimes.has(media.detected) ? media.detected : 'unknown'
+      };
+      if (Number.isSafeInteger(media.bytes) && media.bytes >= 0) detail.media.bytes = media.bytes;
+    }
     if (Number.isSafeInteger(cause.feishuCode)) detail.feishuCode = cause.feishuCode;
     // Common fetch, Axios and AWS SDK status fields. No response bodies are read.
     const status = [cause.httpStatus, cause.status, cause.statusCode,

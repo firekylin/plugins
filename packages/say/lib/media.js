@@ -43,14 +43,28 @@ function decodeBase64Media(value) {
   return {buffer, mime};
 }
 
+function validationError(message, code, buffer, mime) {
+  return Object.assign(new Error(message), {
+    status: 400,
+    code,
+    media: {
+      mime,
+      detected: Buffer.isBuffer(buffer) ? detectedType(buffer) || 'unknown' : 'unknown',
+      bytes: Buffer.isBuffer(buffer) ? buffer.length : 0
+    }
+  });
+}
+
 async function uploadBuffer(buffer, {filename, mime, userId}, dependencies = {}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAX_BYTES) {
-    throw Object.assign(new Error('Media must be between 1 byte and 20 MB'), {status: 400});
+    throw validationError('Media must be between 1 byte and 20 MB', 'MEDIA_SIZE_INVALID', buffer, mime);
   }
   mime = String(mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
   mime = ({'audio/opus': 'audio/ogg', 'application/ogg': 'audio/ogg',
     'audio/x-ogg': 'audio/ogg', 'audio/mp3': 'audio/mpeg', 'audio/x-amr': 'audio/amr'})[mime] || mime;
-  if (!ALLOWED.has(mime)) throw Object.assign(new Error(`Unsupported media type: ${mime}`), {status: 400});
+  if (!ALLOWED.has(mime)) {
+    throw validationError('Unsupported media type', 'MEDIA_TYPE_UNSUPPORTED', buffer, mime);
+  }
   const detected = detectedType(buffer);
   const extensionType = new Map([['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.png', 'image/png'],
     ['.gif', 'image/gif'], ['.webp', 'image/webp'], ['.mp3', 'audio/mpeg'], ['.amr', 'audio/amr'],
@@ -58,7 +72,7 @@ async function uploadBuffer(buffer, {filename, mime, userId}, dependencies = {})
     .get(path.extname(String(filename || '')).toLowerCase());
   if (!detected || (mime !== 'application/octet-stream' && detected !== mime) ||
       (mime === 'application/octet-stream' && extensionType && !detected.startsWith(extensionType.split('/')[0] + '/'))) {
-    throw Object.assign(new Error('Media content does not match its declared type'), {status: 400});
+    throw validationError('Media content does not match its declared type', 'MEDIA_TYPE_MISMATCH', buffer, mime);
   }
   if (mime === 'application/octet-stream') mime = detected;
   userId = Number(userId);
