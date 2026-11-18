@@ -1,9 +1,11 @@
 'use strict';
 
+const {randomUUID} = require('node:crypto');
 const {SayService, secureEqual, strings} = require('./lib/say-service');
 const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feishuMessageEvent,
   verify: verifyFeishu} = require('./lib/feishu');
 const feishuReply = require('./lib/feishu-reply');
+const feedback = require('./lib/publish-feedback');
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
@@ -98,29 +100,29 @@ async function fromWecom(message, settings) {
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = replaceEmoji(message.Content).trim();
-    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge 1,2 可合并碎语。'};
+    if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
     if (merge) {
-      const item = await service.merge(merge[1]);
-      return {reply: `已合并为碎语 #${item.id}`};
+      const item = await feedback.step('merge', () => service.merge(merge[1]));
+      return {item, action: 'merge'};
     }
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    const input = musicUrl ? await enrich({kind: 'music', status: 'public', text: text.replace(musicUrl, '').trim(), url: musicUrl,
-      source: '企业微信'}) : {kind: 'text', status: 'public', text, source: '企业微信'};
-    return {item: await service.create(input, settings.authorId)};
+    const input = musicUrl ? await feedback.step('enrich', () => enrich({kind: 'music', status: 'public', text: text.replace(musicUrl, '').trim(), url: musicUrl,
+      source: '企业微信'})) : {kind: 'text', status: 'public', text, source: '企业微信'};
+    return {item: await feedback.step('save', () => service.create(input, settings.authorId))};
   }
   if (type === 'image' || type === 'voice') {
     if (!settings.wecomCorpSecret) throw new Error('WeCom CorpSecret is not configured');
-    const media = await downloadWecomMedia(message.MediaId, settings);
-    const url = await uploadBuffer(media.buffer, media);
+    const media = await feedback.step('download', () => downloadWecomMedia(message.MediaId, settings));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
     const input = type === 'image' ? {kind: 'image', images: [url]} : {kind: 'voice', mediaUrl: url};
-    return {item: await service.create({...input, status: 'public', source: '企业微信'}, settings.authorId)};
+    return {item: await feedback.step('save', () => service.create({...input, status: 'public', source: '企业微信'}, settings.authorId))};
   }
-  if (type === 'location') return {item: await service.create({kind: 'location', status: 'public',
-    latitude: message.Location_X, longitude: message.Location_Y, label: message.Label, source: '企业微信'}, settings.authorId)};
-  if (type === 'link') return {item: await service.create({kind: 'link', status: 'public', url: message.Url,
-    title: message.Title, description: message.Description, cover: message.PicUrl, source: '企业微信'}, settings.authorId)};
-  return {reply: `暂不支持企业微信消息类型：${type || 'unknown'}`};
+  if (type === 'location') return {item: await feedback.step('save', () => service.create({kind: 'location', status: 'public',
+    latitude: message.Location_X, longitude: message.Location_Y, label: message.Label, source: '企业微信'}, settings.authorId))};
+  if (type === 'link') return {item: await feedback.step('save', () => service.create({kind: 'link', status: 'public', url: message.Url,
+    title: message.Title, description: message.Description, cover: message.PicUrl, source: '企业微信'}, settings.authorId))};
+  return {reply: feedback.unsupported};
 }
 
 async function wecomCallback({ctx: request, query, body}) {
@@ -139,8 +141,8 @@ async function wecomCallback({ctx: request, query, body}) {
   if (!encrypted || !verify({token: settings.wecomToken, timestamp: query.timestamp, nonce: query.nonce,
     encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeCom signature');
   const message = parseXml(decrypt(encrypted, settings.wecomEncodingAESKey, settings.wecomCorpId));
-  const result = await fromWecom(message, settings);
-  const reply = textReply(message.FromUserName, message.ToUserName, result.reply || `碎语 #${result.item.id} 已发布`);
+  const content = await feedback.receive(() => fromWecom(message, settings), `wecom:${message.MsgId || message.CreateTime}`, pluginLogger);
+  const reply = textReply(message.FromUserName, message.ToUserName, content);
   request.type = 'application/xml; charset=utf-8';
   return encryptedReply(reply, settings);
 }
@@ -160,43 +162,43 @@ async function fromWechat(message, settings) {
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = message.Content.trim();
-    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge 1,2 可合并碎语。'};
+    if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
     if (merge) {
-      const item = await service.merge(merge[1]);
-      return {reply: `已合并为碎语 #${item.id}`};
+      const item = await feedback.step('merge', () => service.merge(merge[1]));
+      return {item, action: 'merge'};
     }
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    const input = musicUrl ? await enrich({kind: 'music', status: 'public',
-      text: text.replace(musicUrl, '').trim(), url: musicUrl, source: '微信公众号'})
+    const input = musicUrl ? await feedback.step('enrich', () => enrich({kind: 'music', status: 'public',
+      text: text.replace(musicUrl, '').trim(), url: musicUrl, source: '微信公众号'}))
       : {kind: 'text', status: 'public', text, source: '微信公众号'};
-    return {item: await service.create(input, settings.authorId)};
+    return {item: await feedback.step('save', () => service.create(input, settings.authorId))};
   }
   if (type === 'image') {
     let media;
     try {
-      media = await downloadWechatImage(message.PicUrl);
+      media = await feedback.step('download', () => downloadWechatImage(message.PicUrl));
     } catch (error) {
       if (!settings.wechatAppSecret) throw error;
-      media = await downloadWechatMedia(message.MediaId, settings);
+      media = await feedback.step('download', () => downloadWechatMedia(message.MediaId, settings));
     }
-    const url = await uploadBuffer(media.buffer, media);
-    return {item: await service.create({kind: 'image', images: [url], status: 'public',
-      source: '微信公众号'}, settings.authorId)};
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    return {item: await feedback.step('save', () => service.create({kind: 'image', images: [url], status: 'public',
+      source: '微信公众号'}, settings.authorId))};
   }
   if (type === 'voice') {
     if (!settings.wechatAppSecret) throw new Error('WeChat AppSecret is not configured');
-    const media = await downloadWechatMedia(message.MediaId, settings);
-    const url = await uploadBuffer(media.buffer, media);
-    return {item: await service.create({kind: 'voice', mediaUrl: url, status: 'public',
-      source: '微信公众号'}, settings.authorId)};
+    const media = await feedback.step('download', () => downloadWechatMedia(message.MediaId, settings));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    return {item: await feedback.step('save', () => service.create({kind: 'voice', mediaUrl: url, status: 'public',
+      source: '微信公众号'}, settings.authorId))};
   }
-  if (type === 'location') return {item: await service.create({kind: 'location', status: 'public',
+  if (type === 'location') return {item: await feedback.step('save', () => service.create({kind: 'location', status: 'public',
     latitude: message.Location_X, longitude: message.Location_Y, label: message.Label,
-    source: '微信公众号'}, settings.authorId)};
-  if (type === 'link') return {item: await service.create({kind: 'link', status: 'public', url: message.Url,
-    title: message.Title, description: message.Description, source: '微信公众号'}, settings.authorId)};
-  return {reply: `暂不支持微信公众号消息类型：${type || 'unknown'}`};
+    source: '微信公众号'}, settings.authorId))};
+  if (type === 'link') return {item: await feedback.step('save', () => service.create({kind: 'link', status: 'public', url: message.Url,
+    title: message.Title, description: message.Description, source: '微信公众号'}, settings.authorId))};
+  return {reply: feedback.unsupported};
 }
 
 async function wechatCallback({ctx: request, query, body}) {
@@ -215,9 +217,9 @@ async function wechatCallback({ctx: request, query, body}) {
   if (!encrypted || !verify({token: settings.wechatToken, timestamp: query.timestamp, nonce: query.nonce,
     encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeChat signature');
   const message = parseXml(decrypt(encrypted, settings.wechatEncodingAESKey, settings.wechatAppId));
-  const result = await fromWechat(message, settings);
+  const content = await feedback.receive(() => fromWechat(message, settings), `wechat:${message.MsgId || message.CreateTime}`, pluginLogger);
   request.type = 'application/xml; charset=utf-8';
-  return wechatReply(message, result.reply || `碎语 #${result.item.id} 已发布`, settings);
+  return wechatReply(message, content, settings);
 }
 
 function rawJsonRequestBody(request, body) {
@@ -234,18 +236,18 @@ async function fromFeishu(message, settings) {
     return;
   }
   const source = '飞书';
-  const save = async input => ({item: await feishuReply.step('save',
+  const save = async input => ({item: await feedback.step('save',
     () => service.create(input, settings.authorId)), action: 'publish'});
   if (message.messageType === 'text') {
     let text = String(message.content.text || '');
     for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
     text = text.trim();
     if (!text) return;
-    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge ID1,ID2 合并碎语。'};
+    if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
-    if (merge) return {item: await feishuReply.step('merge', () => service.merge(merge[1])), action: 'merge'};
+    if (merge) return {item: await feedback.step('merge', () => service.merge(merge[1])), action: 'merge'};
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    if (musicUrl) return save(await feishuReply.step('enrich', () => enrich({kind: 'music', status: 'public',
+    if (musicUrl) return save(await feedback.step('enrich', () => enrich({kind: 'music', status: 'public',
       text: text.replace(musicUrl, '').trim(), url: musicUrl, source})));
     if (/^https?:\/\/\S+$/.test(text)) {
       return save({kind: 'link', status: 'public', url: text, title: text, source});
@@ -253,22 +255,22 @@ async function fromFeishu(message, settings) {
     return save({kind: 'text', status: 'public', text, source});
   }
   if (message.messageType === 'image') {
-    const media = await feishuReply.step('download',
+    const media = await feedback.step('download',
       () => downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings));
-    const url = await feishuReply.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
     return save({kind: 'image', status: 'public', images: [url], source});
   }
   if (message.messageType === 'audio') {
-    const media = await feishuReply.step('download',
+    const media = await feedback.step('download',
       () => downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings));
-    const url = await feishuReply.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
     return save({kind: 'voice', status: 'public', mediaUrl: url, source});
   }
   if (message.messageType === 'location') {
     return save({kind: 'location', status: 'public', latitude: message.content.latitude,
       longitude: message.content.longitude, label: message.content.name, source});
   }
-  return {reply: '暂不支持这类消息，请发送文本、图片、语音、位置或链接。'};
+  return {reply: feedback.unsupported};
 }
 
 async function feishuCallback({ctx: request, body}) {
@@ -316,15 +318,11 @@ async function feishuCallback({ctx: request, body}) {
     if (!pending) {
       pending = (async() => {
         let text;
-        const ref = feishuReply.reference(eventKey);
         try {
           const result = await fromFeishu(message, settings);
-          text = result?.reply;
-          if (result?.item) text = result.action === 'merge'
-            ? `✅ 已合并为碎语 #${result.item.id}。` : `✅ 发布成功，碎语 #${result.item.id}。`;
+          text = result?.reply || (result?.item ? feedback.success(result.item, result.action) : undefined);
         } catch (error) {
-          text = `❌ ${feishuReply.diagnostic(error)}\n请先核对后台是否已保存，避免重复发布。参考编号：${ref}`;
-          pluginLogger?.error?.(`say: Feishu ${ref}: ${feishuReply.diagnostic(error)} ${feishuReply.logDetails(error)}`);
+          text = feedback.failure(error, eventKey, pluginLogger);
         }
         const completed = {text, sent: false, pendingReply: null};
         // Store the publishing result before attempting a reply. A reply failure must
@@ -343,7 +341,7 @@ async function feishuCallback({ctx: request, body}) {
         await feishuReply.reply(message.messageId, receipt.text, eventKey, settings);
         receipt.sent = true;
       } catch (error) {
-        pluginLogger?.error?.(`say: Feishu reply ${feishuReply.reference(eventKey)}: ${feishuReply.diagnostic(error, 'reply')} ${feishuReply.logDetails(error, 'reply')}`);
+        pluginLogger?.error?.(`say: Feishu reply ${feedback.reference(eventKey)}: ${feedback.diagnostic(error, 'reply')} ${feedback.logDetails(error, 'reply')}`);
       }
     })();
     try { await receipt.pendingReply } finally { receipt.pendingReply = null }
@@ -375,7 +373,15 @@ module.exports = {
       const settings = await service.settings();
       if (!settings.enabled) return request.throw(503, 'Say publishing is disabled');
       if (!secureEqual(request.get('X-Say-API-Key'), settings.apiKey)) return request.throw(401, 'Invalid API key');
-      return service.create(await enrich(await ingestApiMedia({...body, source: body.source || 'API'})), settings.authorId);
+      try {
+        const input = await feedback.step('upload', () => ingestApiMedia({...body, source: body.source || 'API'}));
+        const enriched = await feedback.step('enrich', () => enrich(input));
+        const item = await feedback.step('save', () => service.create(enriched, settings.authorId));
+        return {...item, success: true, message: feedback.success(item)};
+      } catch (error) {
+        request.status = error.cause?.status === 400 ? 400 : 500;
+        return {success: false, message: feedback.failure(error, `api:${randomUUID()}`, pluginLogger)};
+      }
     }});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false, handler: wecomCallback});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false, handler: wechatCallback});
@@ -450,8 +456,8 @@ module.exports = {
 
     ctx.admin.registerForm({id: 'publish-say', page: 'publish', title: '碎语内容', submitLabel: '发布', fields: textPublishFields,
       load: async() => ({status: 'public', text: ''}), submit: async(values, context) => {
-        const item = await service.create({...values, kind: 'text'}, context.user.id);
-        return {message: `碎语 #${item.id} 已发布。`, item};
+        return feedback.adminResult(() => service.create({...values, kind: 'text'}, context.user.id),
+          'publish', pluginLogger);
       }});
     ctx.admin.registerForm({id: 'edit-say', page: 'edit', title: '碎语内容', submitLabel: '保存修改',
       fields: [{name: 'id', type: 'hidden', label: 'ID', required: true}, ...publishFields],
@@ -470,7 +476,7 @@ module.exports = {
       await service.updateStatus(input.ids, input.status); return {message: '选中碎语的状态已更新。'};
     }});
     ctx.admin.registerAction({id: 'merge-says', page: 'manage', label: '合并', handler: async input => {
-      const item = await service.merge(input.ids); return {message: `碎语已合并为 #${item.id}。`, item};
+      return feedback.adminResult(() => service.merge(input.ids), 'merge', pluginLogger);
     }});
     ctx.admin.registerAction({id: 'delete-says', page: 'manage', label: '删除', type: 'danger',
       confirm: '确定删除选中的碎语吗？', handler: async input =>
