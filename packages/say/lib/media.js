@@ -45,11 +45,13 @@ function decodeBase64Media(value) {
   return {buffer, mime};
 }
 
-async function uploadBuffer(buffer, {filename, mime}, dependencies = {}) {
+async function uploadBuffer(buffer, {filename, mime, userId}, dependencies = {}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAX_BYTES) {
     throw Object.assign(new Error('Media must be between 1 byte and 20 MB'), {status: 400});
   }
-  mime = String(mime || 'application/octet-stream').split(';')[0].toLowerCase();
+  mime = String(mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  mime = ({'audio/opus': 'audio/ogg', 'application/ogg': 'audio/ogg',
+    'audio/x-ogg': 'audio/ogg', 'audio/mp3': 'audio/mpeg', 'audio/x-amr': 'audio/amr'})[mime] || mime;
   if (!ALLOWED.has(mime)) throw Object.assign(new Error(`Unsupported media type: ${mime}`), {status: 400});
   const detected = detectedType(buffer);
   const extensionType = new Map([['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.png', 'image/png'],
@@ -61,6 +63,8 @@ async function uploadBuffer(buffer, {filename, mime}, dependencies = {}) {
     throw Object.assign(new Error('Media content does not match its declared type'), {status: 400});
   }
   if (mime === 'application/octet-stream') mime = detected;
+  userId = Number(userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) throw new TypeError('An explicit upload owner is required');
   const options = dependencies.getOptions ? await dependencies.getOptions() : await think.model('options').getOptions();
   const config = options && options.upload;
   if (!config || !config.type) throw new Error('Firekylin upload provider is not configured');
@@ -68,14 +72,23 @@ async function uploadBuffer(buffer, {filename, mime}, dependencies = {}) {
   const suppliedName = cleanName(filename, `say-media${expectedExtension}`);
   const suppliedExtension = path.extname(suppliedName).toLowerCase();
   const extension = suppliedExtension && extensionType === mime ? suppliedExtension : expectedExtension;
-  const name = suppliedExtension && suppliedExtension !== extension
-    ? `${path.basename(suppliedName, suppliedExtension)}${extension}` : suppliedName;
+  const name = !suppliedExtension ? `${suppliedName}${extension}`
+    : suppliedExtension !== extension ? `${path.basename(suppliedName, suppliedExtension)}${extension}` : suppliedName;
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'firekylin-say-'));
   const localPath = path.join(temporary, `${Date.now()}-${name}`);
   try {
     await fs.writeFile(localPath, buffer, {flag: 'wx', mode: 0o600});
     const file = {name, path: localPath, size: buffer.length, type: mime};
     const uploadConfig = {...config, name: path.parse(name).name, file};
+    const uploadMedia = dependencies.uploadMedia || global.firekylin?.uploadMedia;
+    if (typeof uploadMedia === 'function') {
+      const result = await uploadMedia({file, config: uploadConfig, userId});
+      return result.url;
+    }
+    // Older cores do not expose media registration. Preserve their existing
+    // upload behavior, but explicitly report the reduced capability.
+    const warn = dependencies.warn || (message => think.logger.warn(message));
+    warn('Say: legacy Firekylin upload; media registration unavailable. Upgrade core for media management.');
     const sdk = ['r2', 'minio', 'backblaze', 'wasabi', 'digitalocean', 'vercel'].includes(config.type);
     const uploader = dependencies.getUploader
       ? dependencies.getUploader(sdk ? 'files-sdk' : config.type)
@@ -90,7 +103,7 @@ async function uploadBase64(value, options, dependencies) {
   const decoded = decodeBase64Media(value);
   if (!decoded) return '';
   const mime = decoded.mime || options.mime || 'application/octet-stream';
-  return uploadBuffer(decoded.buffer, {filename: options.filename, mime}, dependencies);
+  return uploadBuffer(decoded.buffer, {filename: options.filename, mime, userId: options.userId}, dependencies);
 }
 
 async function wecomAccessToken(settings, fetchImpl = global.fetch) {

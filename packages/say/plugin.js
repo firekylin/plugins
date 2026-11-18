@@ -64,16 +64,17 @@ function setCors(request) {
   request.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
 }
 
-async function ingestApiMedia(body) {
+async function ingestApiMedia(body, userId) {
   const input = {...body};
   const encodedImages = Array.isArray(body.imagesBase64) ? body.imagesBase64
     : body.imageBase64 ? [body.imageBase64] : [];
   if (encodedImages.length) {
     input.images = [...strings(body.images), ...await Promise.all(encodedImages.slice(0, 20).map((value, index) =>
-      uploadBase64(value, {filename: `say-image-${Date.now()}-${index}.jpg`, mime: body.imageMime || 'image/jpeg'})))];
+      uploadBase64(value, {filename: `say-image-${Date.now()}-${index}.jpg`,
+        mime: body.imageMime || 'image/jpeg', userId})))];
   }
   if (body.mediaBase64) input.mediaUrl = await uploadBase64(body.mediaBase64,
-    {filename: body.mediaName || `say-voice-${Date.now()}.mp3`, mime: body.mediaMime || 'audio/mpeg'});
+    {filename: body.mediaName || `say-voice-${Date.now()}.mp3`, mime: body.mediaMime || 'audio/mpeg', userId});
   return input;
 }
 
@@ -109,7 +110,7 @@ async function fromWecom(message, settings) {
   if (type === 'image' || type === 'voice') {
     if (!settings.wecomCorpSecret) throw new Error('WeCom CorpSecret is not configured');
     const media = await downloadWecomMedia(message.MediaId, settings);
-    const url = await uploadBuffer(media.buffer, media);
+    const url = await uploadBuffer(media.buffer, {...media, userId: settings.authorId});
     const input = type === 'image' ? {kind: 'image', images: [url]} : {kind: 'voice', mediaUrl: url};
     return {item: await service.create({...input, status: 'public', source: '企业微信'}, settings.authorId)};
   }
@@ -177,14 +178,14 @@ async function fromWechat(message, settings) {
       if (!settings.wechatAppSecret) throw error;
       media = await downloadWechatMedia(message.MediaId, settings);
     }
-    const url = await uploadBuffer(media.buffer, media);
+    const url = await uploadBuffer(media.buffer, {...media, userId: settings.authorId});
     return {item: await service.create({kind: 'image', images: [url], status: 'public',
       source: '微信公众号'}, settings.authorId)};
   }
   if (type === 'voice') {
     if (!settings.wechatAppSecret) throw new Error('WeChat AppSecret is not configured');
     const media = await downloadWechatMedia(message.MediaId, settings);
-    const url = await uploadBuffer(media.buffer, media);
+    const url = await uploadBuffer(media.buffer, {...media, userId: settings.authorId});
     return {item: await service.create({kind: 'voice', mediaUrl: url, status: 'public',
       source: '微信公众号'}, settings.authorId)};
   }
@@ -248,12 +249,12 @@ async function fromFeishu(message, settings) {
   }
   if (message.messageType === 'image') {
     const media = await downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings);
-    const url = await uploadBuffer(media.buffer, media);
+    const url = await uploadBuffer(media.buffer, {...media, userId: settings.authorId});
     return service.create({kind: 'image', status: 'public', images: [url], source}, settings.authorId);
   }
   if (message.messageType === 'audio') {
     const media = await downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings);
-    const url = await uploadBuffer(media.buffer, media);
+    const url = await uploadBuffer(media.buffer, {...media, userId: settings.authorId});
     return service.create({kind: 'voice', status: 'public', mediaUrl: url, source}, settings.authorId);
   }
   if (message.messageType === 'location') {
@@ -332,7 +333,8 @@ module.exports = {
       const settings = await service.settings();
       if (!settings.enabled) return request.throw(503, 'Say publishing is disabled');
       if (!secureEqual(request.get('X-Say-API-Key'), settings.apiKey)) return request.throw(401, 'Invalid API key');
-      return service.create(await enrich(await ingestApiMedia({...body, source: body.source || 'API'})), settings.authorId);
+      const input = await ingestApiMedia({...body, source: body.source || 'API'}, settings.authorId);
+      return service.create(await enrich(input), settings.authorId);
     }});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false, handler: wecomCallback});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false, handler: wechatCallback});

@@ -105,3 +105,25 @@ https://example.com/api/plugins/say/feishu
 目前支持文本、单独发送的链接、网易云音乐链接、图片、音频和位置。图片与音频通过
 `tenant_access_token` 从飞书消息资源接口下载，再交给 Firekylin 当前配置的上传服务。飞书音频
 保持原始格式，不进行转码。应用配置或权限变更后，需要创建版本并发布，事件和权限才会生效。
+
+### 上传与媒体管理兼容性
+
+新版核心提供 `global.firekylin.uploadMedia` 时，API、企业微信、微信公众号和飞书的图片、语音均使用该入口，
+以 Say 配置的 `authorId` 登记媒体，保持原有 URL 返回值。存储适配器不会再由 Say 重复调用。
+先合入并升级包含此 API 的 Firekylin 核心，再合入/使用本次 Say 更新；不要仅根据核心现有版本号判断支持情况。
+旧核心仍可上传，保持原行为，但日志会明确提示无法登记媒体、需要升级；旧核心不会获得本次媒体管理修复。
+因此保留原 engines 范围，不把尚未发布的核心版本写成已满足的依赖。历史文件不补录。
+
+上传成功而登记失败时，错误原样传出，包含 `MEDIA_REGISTRATION_FAILED`、`uploadedUrl` 和 `retryable: false`。
+不会降级重传，也不会删除已存储文件。数据库写入可能已提交，请先核对该 URL 对应的媒体记录后再恢复。
+这不是跨请求幂等保证：外部平台重发失败事件、手动重发、进程重启或多实例都可能重新上传。
+
+Say 支持 JPEG、PNG、GIF、WebP 图片以及 MP3、AMR/AMR-WB、Ogg 音频，单文件最多 20 MB。
+Ogg 封装的 Opus 支持 `audio/opus`、`audio/ogg`、`application/ogg`、`audio/x-ogg` 和通用二进制 MIME；
+仍检查内容签名，不能仅凭 `.opus` 后缀接受未知文件。不执行转码，也不保证各浏览器能播放 AMR 或裸 Opus。
+核心 `media.upload` Ability 的图片限制不会用于 Say。
+
+飞书使用消息资源下载接口 `messages/{message_id}/resources/{file_key}?type=file` 下载语音。
+回归测试覆盖模拟飞书下载到上传登记的链路；尚未使用真实飞书账号、生产存储或原始报错附件验证。
+“无法识别的文件类型”并非当前主分支的错误字面量，不能仅据该提示确定生产故障来源；
+需结合实际响应 MIME、文件格式和服务端错误阶段确认。MIME 别名修复不代表所有语音格式均已支持。

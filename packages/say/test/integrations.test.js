@@ -48,7 +48,8 @@ test('validates base64 media size and syntax', () => {
 test('uploads media through the configured Firekylin provider and fixes mismatched extensions', async() => {
   let received;
   const url = await uploadBuffer(Buffer.from('89504e470d0a1a0a', 'hex'),
-    {filename: 'photo.jpg', mime: 'image/png'}, {
+    {filename: 'photo.jpg', mime: 'image/png', userId: 7}, {
+      warn: () => {},
       getOptions: async() => ({upload: {type: 'local'}}),
       getUploader: name => ({run: async(file, config) => {
         received = {name, file, config};

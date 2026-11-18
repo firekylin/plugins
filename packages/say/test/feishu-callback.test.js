@@ -110,3 +110,39 @@ test('disabled publishing still rejects URL verification', async t => {
   await assert.rejects(request({type: 'url_verification', token: settings.feishuVerificationToken,
     challenge: 'test-challenge'}), {status: 503});
 });
+
+for (const messageType of ['audio', 'image']) {
+  test(`signed Feishu ${messageType} event uploads with configured author before publishing`, async t => {
+    const {request, published} = setup(t, {authorId: 27});
+    const oldThink = global.think;
+    const oldFirekylin = global.firekylin;
+    t.after(() => { global.think = oldThink; global.firekylin = oldFirekylin; });
+    const uploads = [];
+    global.think = {model: () => ({getOptions: async() => ({upload: {type: 'r2'}})})};
+    global.firekylin = {uploadMedia: async input => {
+      uploads.push(input);
+      return {url: `/uploads/${messageType}`, id: 88};
+    }};
+    t.mock.method(global, 'fetch', async value => {
+      if (String(value).includes('/auth/')) {
+        return {ok: true, json: async() => ({tenant_access_token: 'test', expire: 7200})};
+      }
+      assert.equal(new URL(value).searchParams.get('type'), messageType === 'audio' ? 'file' : 'image');
+      return {ok: true, headers: new Headers({'content-type': messageType === 'audio'
+        ? 'application/ogg' : 'image/png'}), arrayBuffer: async() => messageType === 'audio'
+        ? Buffer.concat([Buffer.from('OggS'), Buffer.alloc(24), Buffer.from('OpusHead')])
+        : Buffer.from('89504e470d0a1a0a', 'hex')};
+    });
+    const payload = message(`registered-${messageType}`);
+    payload.event.message = {message_id: `om_${messageType}`, message_type: messageType,
+      content: JSON.stringify(messageType === 'audio' ? {file_key: 'file_voice'} : {image_key: 'img_photo'})};
+    await request(encrypt(payload), {signed: true});
+    assert.equal(uploads.length, 1);
+    assert.equal(uploads[0].userId, 27);
+    assert.equal(uploads[0].file.type, messageType === 'audio' ? 'audio/ogg' : 'image/png');
+    assert.equal(published.length, 1);
+    assert.equal(published[0].kind, messageType === 'audio' ? 'voice' : 'image');
+    await request(encrypt(payload), {signed: true});
+    assert.equal(uploads.length, 1, 'completed event replay must not upload twice');
+  });
+}
