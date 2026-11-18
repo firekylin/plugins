@@ -2,7 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const {diagnostic, logDetails, reply, step} = require('../lib/feishu-reply');
+const {reply} = require('../lib/feishu-reply');
+const {diagnostic, logDetails, step} = require('../lib/publish-feedback');
 
 function settings(id) {
   return {feishuAppId: `reply-test-${id}`, feishuAppSecret: 'test-secret'};
@@ -57,7 +58,7 @@ test('safe error descriptions distinguish operation, timeout and configuration e
   for (const [stage, cause, expected] of [
     ['upload', Object.assign(new Error('private details'), {code: 'PLUGIN_MEDIA_DENIED'}), /PLUGIN_MEDIA_DENIED.*插件/],
     ['upload', Object.assign(new Error('private details'), {code: 'MEDIA_OWNER_DENIED'}), /MEDIA_OWNER_DENIED.*作者/],
-    ['download', new Error('Feishu resource error: private token'), /下载飞书附件失败.*读取权限/],
+    ['download', new Error('Feishu resource error: private token'), /下载附件失败.*读取权限/],
     ['upload', Object.assign(new Error('secret endpoint'), {name: 'TimeoutError'}), /上传附件超时/],
     ['merge', new Error('At least two say IDs are required'), /至少两个碎语 ID/],
     ['save', new Error('db password=secret'), /保存碎语失败.*后台日志/],

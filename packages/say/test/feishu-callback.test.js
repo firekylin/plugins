@@ -178,7 +178,7 @@ test('media API failures identify the failed step without echoing the provider r
   payload.event.message.message_type = 'image';
   payload.event.message.content = JSON.stringify({image_key: 'invalid/key'});
   await request(encrypt(payload), {signed: true});
-  assert.match(replies[0][1], /下载飞书附件失败.*附件标识无效/);
+  assert.match(replies[0][1], /下载附件失败.*附件标识无效/);
   assert.equal(published.length, 0);
 });
 
@@ -214,7 +214,7 @@ test('a real media API error sends safe feedback and never starts storage', asyn
   payload.event.message.message_type = 'image';
   payload.event.message.content = JSON.stringify({image_key: 'img_valid'});
   await request(encrypt(payload), {signed: true});
-  assert.match(replies[0][1], /下载飞书附件失败.*App ID 和 App Secret/);
+  assert.match(replies[0][1], /下载附件失败.*App ID 和 App Secret/);
   assert.match(replies[0][1], /飞书错误码 10003/);
   assert.doesNotMatch(replies[0][1], /app-secret|db-password|private-response/);
   assert.equal(published.length, 0);
