@@ -1,8 +1,11 @@
 'use strict';
 
+const {randomUUID} = require('node:crypto');
 const {SayService, secureEqual, strings} = require('./lib/say-service');
 const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feishuMessageEvent,
   verify: verifyFeishu} = require('./lib/feishu');
+const feishuReply = require('./lib/feishu-reply');
+const feedback = require('./lib/publish-feedback');
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
@@ -11,7 +14,9 @@ const {decrypt, encryptedReply, parseXml, textReply, verify, xmlValue} = require
 
 let service;
 let pluginLogger;
-const feishuEvents = new Set();
+// Best-effort, process-local receipts; not a durable cross-instance deduplication store.
+const feishuEvents = new Map();
+const feishuInFlight = new Map();
 
 const kindOptions = [
   ['文本', 'text'], ['图片', 'image'], ['图文', 'textpic'], ['语音', 'voice'],
@@ -95,29 +100,29 @@ async function fromWecom(message, settings) {
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = replaceEmoji(message.Content).trim();
-    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge 1,2 可合并碎语。'};
+    if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
     if (merge) {
-      const item = await service.merge(merge[1]);
-      return {reply: `已合并为碎语 #${item.id}`};
+      const item = await feedback.step('merge', () => service.merge(merge[1]));
+      return {item, action: 'merge'};
     }
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    const input = musicUrl ? await enrich({kind: 'music', status: 'public', text: text.replace(musicUrl, '').trim(), url: musicUrl,
-      source: '企业微信'}) : {kind: 'text', status: 'public', text, source: '企业微信'};
-    return {item: await service.create(input, settings.authorId)};
+    const input = musicUrl ? await feedback.step('enrich', () => enrich({kind: 'music', status: 'public', text: text.replace(musicUrl, '').trim(), url: musicUrl,
+      source: '企业微信'})) : {kind: 'text', status: 'public', text, source: '企业微信'};
+    return {item: await feedback.step('save', () => service.create(input, settings.authorId))};
   }
   if (type === 'image' || type === 'voice') {
     if (!settings.wecomCorpSecret) throw new Error('WeCom CorpSecret is not configured');
-    const media = await downloadWecomMedia(message.MediaId, settings);
-    const url = await uploadBuffer(media.buffer, media);
+    const media = await feedback.step('download', () => downloadWecomMedia(message.MediaId, settings));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
     const input = type === 'image' ? {kind: 'image', images: [url]} : {kind: 'voice', mediaUrl: url};
-    return {item: await service.create({...input, status: 'public', source: '企业微信'}, settings.authorId)};
+    return {item: await feedback.step('save', () => service.create({...input, status: 'public', source: '企业微信'}, settings.authorId))};
   }
-  if (type === 'location') return {item: await service.create({kind: 'location', status: 'public',
-    latitude: message.Location_X, longitude: message.Location_Y, label: message.Label, source: '企业微信'}, settings.authorId)};
-  if (type === 'link') return {item: await service.create({kind: 'link', status: 'public', url: message.Url,
-    title: message.Title, description: message.Description, cover: message.PicUrl, source: '企业微信'}, settings.authorId)};
-  return {reply: `暂不支持企业微信消息类型：${type || 'unknown'}`};
+  if (type === 'location') return {item: await feedback.step('save', () => service.create({kind: 'location', status: 'public',
+    latitude: message.Location_X, longitude: message.Location_Y, label: message.Label, source: '企业微信'}, settings.authorId))};
+  if (type === 'link') return {item: await feedback.step('save', () => service.create({kind: 'link', status: 'public', url: message.Url,
+    title: message.Title, description: message.Description, cover: message.PicUrl, source: '企业微信'}, settings.authorId))};
+  return {reply: feedback.unsupported};
 }
 
 async function wecomCallback({ctx: request, query, body}) {
@@ -136,8 +141,8 @@ async function wecomCallback({ctx: request, query, body}) {
   if (!encrypted || !verify({token: settings.wecomToken, timestamp: query.timestamp, nonce: query.nonce,
     encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeCom signature');
   const message = parseXml(decrypt(encrypted, settings.wecomEncodingAESKey, settings.wecomCorpId));
-  const result = await fromWecom(message, settings);
-  const reply = textReply(message.FromUserName, message.ToUserName, result.reply || `碎语 #${result.item.id} 已发布`);
+  const content = await feedback.receive(() => fromWecom(message, settings), `wecom:${message.MsgId || message.CreateTime}`, pluginLogger);
+  const reply = textReply(message.FromUserName, message.ToUserName, content);
   request.type = 'application/xml; charset=utf-8';
   return encryptedReply(reply, settings);
 }
@@ -157,43 +162,43 @@ async function fromWechat(message, settings) {
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = message.Content.trim();
-    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge 1,2 可合并碎语。'};
+    if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
     if (merge) {
-      const item = await service.merge(merge[1]);
-      return {reply: `已合并为碎语 #${item.id}`};
+      const item = await feedback.step('merge', () => service.merge(merge[1]));
+      return {item, action: 'merge'};
     }
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    const input = musicUrl ? await enrich({kind: 'music', status: 'public',
-      text: text.replace(musicUrl, '').trim(), url: musicUrl, source: '微信公众号'})
+    const input = musicUrl ? await feedback.step('enrich', () => enrich({kind: 'music', status: 'public',
+      text: text.replace(musicUrl, '').trim(), url: musicUrl, source: '微信公众号'}))
       : {kind: 'text', status: 'public', text, source: '微信公众号'};
-    return {item: await service.create(input, settings.authorId)};
+    return {item: await feedback.step('save', () => service.create(input, settings.authorId))};
   }
   if (type === 'image') {
     let media;
     try {
-      media = await downloadWechatImage(message.PicUrl);
+      media = await feedback.step('download', () => downloadWechatImage(message.PicUrl));
     } catch (error) {
       if (!settings.wechatAppSecret) throw error;
-      media = await downloadWechatMedia(message.MediaId, settings);
+      media = await feedback.step('download', () => downloadWechatMedia(message.MediaId, settings));
     }
-    const url = await uploadBuffer(media.buffer, media);
-    return {item: await service.create({kind: 'image', images: [url], status: 'public',
-      source: '微信公众号'}, settings.authorId)};
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    return {item: await feedback.step('save', () => service.create({kind: 'image', images: [url], status: 'public',
+      source: '微信公众号'}, settings.authorId))};
   }
   if (type === 'voice') {
     if (!settings.wechatAppSecret) throw new Error('WeChat AppSecret is not configured');
-    const media = await downloadWechatMedia(message.MediaId, settings);
-    const url = await uploadBuffer(media.buffer, media);
-    return {item: await service.create({kind: 'voice', mediaUrl: url, status: 'public',
-      source: '微信公众号'}, settings.authorId)};
+    const media = await feedback.step('download', () => downloadWechatMedia(message.MediaId, settings));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    return {item: await feedback.step('save', () => service.create({kind: 'voice', mediaUrl: url, status: 'public',
+      source: '微信公众号'}, settings.authorId))};
   }
-  if (type === 'location') return {item: await service.create({kind: 'location', status: 'public',
+  if (type === 'location') return {item: await feedback.step('save', () => service.create({kind: 'location', status: 'public',
     latitude: message.Location_X, longitude: message.Location_Y, label: message.Label,
-    source: '微信公众号'}, settings.authorId)};
-  if (type === 'link') return {item: await service.create({kind: 'link', status: 'public', url: message.Url,
-    title: message.Title, description: message.Description, source: '微信公众号'}, settings.authorId)};
-  return {reply: `暂不支持微信公众号消息类型：${type || 'unknown'}`};
+    source: '微信公众号'}, settings.authorId))};
+  if (type === 'link') return {item: await feedback.step('save', () => service.create({kind: 'link', status: 'public', url: message.Url,
+    title: message.Title, description: message.Description, source: '微信公众号'}, settings.authorId))};
+  return {reply: feedback.unsupported};
 }
 
 async function wechatCallback({ctx: request, query, body}) {
@@ -212,9 +217,9 @@ async function wechatCallback({ctx: request, query, body}) {
   if (!encrypted || !verify({token: settings.wechatToken, timestamp: query.timestamp, nonce: query.nonce,
     encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeChat signature');
   const message = parseXml(decrypt(encrypted, settings.wechatEncodingAESKey, settings.wechatAppId));
-  const result = await fromWechat(message, settings);
+  const content = await feedback.receive(() => fromWechat(message, settings), `wechat:${message.MsgId || message.CreateTime}`, pluginLogger);
   request.type = 'application/xml; charset=utf-8';
-  return wechatReply(message, result.reply || `碎语 #${result.item.id} 已发布`, settings);
+  return wechatReply(message, content, settings);
 }
 
 function rawJsonRequestBody(request, body) {
@@ -231,36 +236,41 @@ async function fromFeishu(message, settings) {
     return;
   }
   const source = '飞书';
+  const save = async input => ({item: await feedback.step('save',
+    () => service.create(input, settings.authorId)), action: 'publish'});
   if (message.messageType === 'text') {
     let text = String(message.content.text || '');
     for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
     text = text.trim();
-    if (!text || text === '/help') return;
+    if (!text) return;
+    if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
-    if (merge) return service.merge(merge[1]);
+    if (merge) return {item: await feedback.step('merge', () => service.merge(merge[1])), action: 'merge'};
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    if (musicUrl) return service.create(await enrich({kind: 'music', status: 'public',
-      text: text.replace(musicUrl, '').trim(), url: musicUrl, source}), settings.authorId);
+    if (musicUrl) return save(await feedback.step('enrich', () => enrich({kind: 'music', status: 'public',
+      text: text.replace(musicUrl, '').trim(), url: musicUrl, source})));
     if (/^https?:\/\/\S+$/.test(text)) {
-      return service.create({kind: 'link', status: 'public', url: text, title: text, source}, settings.authorId);
+      return save({kind: 'link', status: 'public', url: text, title: text, source});
     }
-    return service.create({kind: 'text', status: 'public', text, source}, settings.authorId);
+    return save({kind: 'text', status: 'public', text, source});
   }
   if (message.messageType === 'image') {
-    const media = await downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings);
-    const url = await uploadBuffer(media.buffer, media);
-    return service.create({kind: 'image', status: 'public', images: [url], source}, settings.authorId);
+    const media = await feedback.step('download',
+      () => downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    return save({kind: 'image', status: 'public', images: [url], source});
   }
   if (message.messageType === 'audio') {
-    const media = await downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings);
-    const url = await uploadBuffer(media.buffer, media);
-    return service.create({kind: 'voice', status: 'public', mediaUrl: url, source}, settings.authorId);
+    const media = await feedback.step('download',
+      () => downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings));
+    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    return save({kind: 'voice', status: 'public', mediaUrl: url, source});
   }
   if (message.messageType === 'location') {
-    return service.create({kind: 'location', status: 'public', latitude: message.content.latitude,
-      longitude: message.content.longitude, label: message.content.name, source}, settings.authorId);
+    return save({kind: 'location', status: 'public', latitude: message.content.latitude,
+      longitude: message.content.longitude, label: message.content.name, source});
   }
-  pluginLogger?.info?.(`say: ignored Feishu message type ${message.messageType || 'unknown'}`);
+  return {reply: feedback.unsupported};
 }
 
 async function feishuCallback({ctx: request, body}) {
@@ -299,11 +309,42 @@ async function feishuCallback({ctx: request, body}) {
     return request.throw(401, 'Invalid Feishu app ID');
   }
   const message = feishuMessageEvent(payload);
-  if (!message || feishuEvents.has(message.eventId)) return {};
-  await fromFeishu(message, settings);
-  if (message.eventId) {
-    feishuEvents.add(message.eventId);
-    if (feishuEvents.size > 1000) feishuEvents.delete(feishuEvents.values().next().value);
+  if (!message || !strings(settings.feishuAllowedOpenIds).includes(message.openId)) return {};
+  if (!/^om_[A-Za-z0-9_-]{1,256}$/.test(message.messageId)) return {};
+  const eventKey = `${settings.feishuAppId}:${message.eventId || message.messageId}`;
+  let receipt = feishuEvents.get(eventKey);
+  if (!receipt) {
+    let pending = feishuInFlight.get(eventKey);
+    if (!pending) {
+      pending = (async() => {
+        let text;
+        try {
+          const result = await fromFeishu(message, settings);
+          text = result?.reply || (result?.item ? feedback.success(result.item, result.action) : undefined);
+        } catch (error) {
+          text = feedback.failure(error, eventKey, pluginLogger);
+        }
+        const completed = {text, sent: false, pendingReply: null};
+        // Store the publishing result before attempting a reply. A reply failure must
+        // never make a webhook retry run the publishing operation again in this process.
+        feishuEvents.set(eventKey, completed);
+        if (feishuEvents.size > 1000) feishuEvents.delete(feishuEvents.keys().next().value);
+        return completed;
+      })();
+      feishuInFlight.set(eventKey, pending);
+    }
+    try { receipt = await pending } finally { feishuInFlight.delete(eventKey) }
+  }
+  if (receipt.text && !receipt.sent) {
+    if (!receipt.pendingReply) receipt.pendingReply = (async() => {
+      try {
+        await feishuReply.reply(message.messageId, receipt.text, eventKey, settings);
+        receipt.sent = true;
+      } catch (error) {
+        pluginLogger?.error?.(`say: Feishu reply ${feedback.reference(eventKey)}: ${feedback.diagnostic(error, 'reply')} ${feedback.logDetails(error, 'reply')}`);
+      }
+    })();
+    try { await receipt.pendingReply } finally { receipt.pendingReply = null }
   }
   return {};
 }
@@ -332,7 +373,15 @@ module.exports = {
       const settings = await service.settings();
       if (!settings.enabled) return request.throw(503, 'Say publishing is disabled');
       if (!secureEqual(request.get('X-Say-API-Key'), settings.apiKey)) return request.throw(401, 'Invalid API key');
-      return service.create(await enrich(await ingestApiMedia({...body, source: body.source || 'API'})), settings.authorId);
+      try {
+        const input = await feedback.step('upload', () => ingestApiMedia({...body, source: body.source || 'API'}));
+        const enriched = await feedback.step('enrich', () => enrich(input));
+        const item = await feedback.step('save', () => service.create(enriched, settings.authorId));
+        return {...item, success: true, message: feedback.success(item)};
+      } catch (error) {
+        request.status = error.cause?.status === 400 ? 400 : 500;
+        return {success: false, message: feedback.failure(error, `api:${randomUUID()}`, pluginLogger)};
+      }
     }});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false, handler: wecomCallback});
     ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false, handler: wechatCallback});
@@ -391,29 +440,15 @@ module.exports = {
     ctx.admin.registerPage({
       id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
       load: async() => ({sections: [
+        {type: 'markdown', title: '发布方式配置', content:
+          '外部 API、企业微信、微信公众号和飞书可以同时配置和使用，彼此不互斥。按需填写所需方式的配置即可，无需全部配置；完成后点击“保存全部设置”统一保存。'},
         {type: 'form', id: 'say-basic-settings'},
-        {type: 'divider', title: '发布设置'},
-        {type: 'tabs', items: [
-          {key: 'external', label: '外部发布', sections: [
-            {type: 'form', id: 'say-external-settings'},
-            {type: 'markdown', title: '外部发布接口', content:
-              '向 `/api/plugins/say/publish` 发送 JSON，并通过 `X-Say-API-Key` 请求头传递密钥。可传 `imageBase64`、`imagesBase64` 或 `mediaBase64`，文件会交给 Firekylin 已配置的上传服务。'}
-          ]},
-          {key: 'wecom', label: '企业微信发布', sections: [
-            {type: 'form', id: 'say-wecom-settings'},
-            {type: 'markdown', title: '回调地址', content: '`/api/plugins/say/wecom`'}
-          ]},
-          {key: 'wechat', label: '微信公众号发布', sections: [
-            {type: 'form', id: 'say-wechat-settings'},
-            {type: 'markdown', title: '回调设置', content:
-              '回调地址：`/api/plugins/say/wechat`。公众号服务器配置必须选择安全模式，并将允许发布者的 OpenID 加入白名单。'}
-          ]},
-          {key: 'feishu', label: '飞书发布', sections: [
-            {type: 'form', id: 'say-feishu-settings'},
-            {type: 'markdown', title: '事件订阅', content:
-              '请求地址：`/api/plugins/say/feishu`。请配置 Encrypt Key，订阅 `im.message.receive_v1`，并将发布者 OpenID 加入白名单。'}
-          ]}
-        ]},
+        {type: 'markdown', title: '外部发布接口', content:
+          '向 `/api/plugins/say/publish` 发送 JSON，并通过 `X-Say-API-Key` 请求头传递密钥。可传 `imageBase64`、`imagesBase64` 或 `mediaBase64`，文件会交给 Firekylin 已配置的上传服务。'},
+        {type: 'markdown', title: '消息平台回调设置', content:
+          '- 企业微信：`/api/plugins/say/wecom`。\n' +
+          '- 微信公众号：`/api/plugins/say/wechat`，服务器配置必须选择安全模式，并将发布者 OpenID 加入白名单。\n' +
+          '- 飞书：`/api/plugins/say/feishu`，配置 Encrypt Key，订阅 `im.message.receive_v1`，并将发布者 OpenID 加入白名单。'},
         {type: 'markdown', title: '公开访问', content:
           '公开页面：`/says`；标签页面：`/says/tag/标签`；JSON API：`/api/plugins/say/list`。主题可调用 `say.list` 或 `Widget_Plugin_Say`。'}
       ]})
@@ -421,8 +456,8 @@ module.exports = {
 
     ctx.admin.registerForm({id: 'publish-say', page: 'publish', title: '碎语内容', submitLabel: '发布', fields: textPublishFields,
       load: async() => ({status: 'public', text: ''}), submit: async(values, context) => {
-        const item = await service.create({...values, kind: 'text'}, context.user.id);
-        return {message: `碎语 #${item.id} 已发布。`, item};
+        return feedback.adminResult(() => service.create({...values, kind: 'text'}, context.user.id),
+          'publish', pluginLogger);
       }});
     ctx.admin.registerForm({id: 'edit-say', page: 'edit', title: '碎语内容', submitLabel: '保存修改',
       fields: [{name: 'id', type: 'hidden', label: 'ID', required: true}, ...publishFields],
@@ -441,51 +476,32 @@ module.exports = {
       await service.updateStatus(input.ids, input.status); return {message: '选中碎语的状态已更新。'};
     }});
     ctx.admin.registerAction({id: 'merge-says', page: 'manage', label: '合并', handler: async input => {
-      const item = await service.merge(input.ids); return {message: `碎语已合并为 #${item.id}。`, item};
+      return feedback.adminResult(() => service.merge(input.ids), 'merge', pluginLogger);
     }});
     ctx.admin.registerAction({id: 'delete-says', page: 'manage', label: '删除', type: 'danger',
       confirm: '确定删除选中的碎语吗？', handler: async input =>
         ({message: `已删除 ${await service.remove(input.ids)} 条碎语。`})});
-    ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '基础设置', submitLabel: '保存基础设置', fields: [
+    ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '碎语设置',
+      submitLabel: '保存全部设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
         description: '外部 API、企业微信、微信公众号和飞书发布的碎语都会归属到这个用户。'},
-      {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'}
-    ], load: async() => service.settings(), submit: async values => {
-      await service.saveSettings(values); return {message: '基础设置已保存。'};
-    }});
-    ctx.admin.registerForm({id: 'say-external-settings', page: 'settings', title: '外部发布',
-      submitLabel: '保存外部发布设置', fields: [
-        {name: 'apiKey', type: 'password', label: '外部发布 API Key',
-          description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'}
-      ], load: async() => service.settings(), submit: async values => {
-        await service.saveSettings(values); return {message: '外部发布设置已保存。'};
-      }});
-    ctx.admin.registerForm({id: 'say-wecom-settings', page: 'settings', title: '企业微信发布',
-      submitLabel: '保存企业微信设置', fields: [
+      {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'},
+      {name: 'apiKey', type: 'password', label: '外部发布 API Key',
+        description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'},
       {name: 'wecomCorpId', type: 'text', label: '企业微信 CorpID'},
       {name: 'wecomCorpSecret', type: 'password', label: '企业微信 CorpSecret', description: '用于下载图片和语音；留空会保留原值。'},
       {name: 'wecomToken', type: 'password', label: '企业微信回调 Token', description: '留空会保留原值。'},
-      {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'}
-    ], load: async() => service.settings(), submit: async values => {
-      await service.saveSettings(values); return {message: '企业微信设置已保存。'};
-    }});
-    ctx.admin.registerForm({id: 'say-wechat-settings', page: 'settings', title: '微信公众号发布',
-      submitLabel: '保存微信公众号设置', fields: [
+      {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'},
       {name: 'wechatAppId', type: 'text', label: '公众号 AppID'},
       {name: 'wechatAppSecret', type: 'password', label: '公众号 AppSecret',
         description: '用于下载语音，以及图片 URL 不可用时下载临时素材；留空会保留原值。'},
       {name: 'wechatToken', type: 'password', label: '公众号回调 Token', description: '留空会保留原值。'},
       {name: 'wechatEncodingAESKey', type: 'password', label: '公众号 EncodingAESKey',
         description: '服务器配置需要选择安全模式；留空会保留原值。'},
-      {name: 'wechatAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
-        description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'}
-    ], load: async() => service.settings(), submit: async values => {
-      await service.saveSettings(values); return {message: '微信公众号设置已保存。'};
-    }});
-    ctx.admin.registerForm({id: 'say-feishu-settings', page: 'settings', title: '飞书发布',
-      submitLabel: '保存飞书设置', fields: [
+      {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
+        description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'},
       {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
       {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
         description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
@@ -493,10 +509,11 @@ module.exports = {
         description: '在事件与回调的加密策略中获取；留空会保留原值。'},
       {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
         description: '用于回调签名校验和事件解密；留空会保留原值。'},
-      {name: 'feishuAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
+      {name: 'feishuAllowedOpenIds', type: 'textarea', label: '飞书允许发布的 OpenID',
         description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
     ], load: async() => service.settings(), submit: async values => {
-      await service.saveSettings(values); return {message: '飞书设置已保存。'};
+      await service.saveSettings(values);
+      return {message: '全部设置已保存。'};
     }});
   }
 };
