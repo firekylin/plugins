@@ -391,6 +391,8 @@ module.exports = {
     ctx.admin.registerPage({
       id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
       load: async() => ({sections: [
+        {type: 'markdown', title: '发布方式配置', content:
+          '外部 API、企业微信、微信公众号和飞书可以同时配置和使用，彼此不互斥。按需填写所需方式的配置即可，无需全部配置；完成后点击“保存全部设置”统一保存。'},
         {type: 'form', id: 'say-basic-settings'},
         {type: 'markdown', title: '外部发布接口', content:
           '向 `/api/plugins/say/publish` 发送 JSON，并通过 `X-Say-API-Key` 请求头传递密钥。可传 `imageBase64`、`imagesBase64` 或 `mediaBase64`，文件会交给 Firekylin 已配置的上传服务。'},
@@ -431,55 +433,38 @@ module.exports = {
       confirm: '确定删除选中的碎语吗？', handler: async input =>
         ({message: `已删除 ${await service.remove(input.ids)} 条碎语。`})});
     ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '碎语设置',
-      submitLabel: '保存基础设置和当前发布方式', fields: [
+      submitLabel: '保存全部设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
         description: '外部 API、企业微信、微信公众号和飞书发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'},
-      {name: 'settingsGroup', type: 'radio', label: '发布方式',
-        description: '切换仅用于查看设置，不会启用或停用发布方式。修改后请先保存再切换；未保存的当前发布方式修改会被丢弃。',
-        options: [
-          {label: '外部发布', value: 'external'},
-          {label: '企业微信', value: 'wecom'},
-          {label: '微信公众号', value: 'wechat'},
-          {label: '飞书', value: 'feishu'}
-        ]},
-      ...[
-        {name: 'apiKey', type: 'password', label: '外部发布 API Key',
-          description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'}
-      ].map(field => ({...field, visibleWhen: {field: 'settingsGroup', values: ['external']}})),
-      ...[
-        {name: 'wecomCorpId', type: 'text', label: '企业微信 CorpID'},
-        {name: 'wecomCorpSecret', type: 'password', label: '企业微信 CorpSecret', description: '用于下载图片和语音；留空会保留原值。'},
-        {name: 'wecomToken', type: 'password', label: '企业微信回调 Token', description: '留空会保留原值。'},
-        {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'}
-      ].map(field => ({...field, visibleWhen: {field: 'settingsGroup', values: ['wecom']}})),
-      ...[
-        {name: 'wechatAppId', type: 'text', label: '公众号 AppID'},
-        {name: 'wechatAppSecret', type: 'password', label: '公众号 AppSecret',
-          description: '用于下载语音，以及图片 URL 不可用时下载临时素材；留空会保留原值。'},
-        {name: 'wechatToken', type: 'password', label: '公众号回调 Token', description: '留空会保留原值。'},
-        {name: 'wechatEncodingAESKey', type: 'password', label: '公众号 EncodingAESKey',
-          description: '服务器配置需要选择安全模式；留空会保留原值。'},
-        {name: 'wechatAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
-          description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'}
-      ].map(field => ({...field, visibleWhen: {field: 'settingsGroup', values: ['wechat']}})),
-      ...[
-        {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
-        {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
-          description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
-        {name: 'feishuVerificationToken', type: 'password', label: '飞书 Verification Token',
-          description: '在事件与回调的加密策略中获取；留空会保留原值。'},
-        {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
-          description: '用于回调签名校验和事件解密；留空会保留原值。'},
-        {name: 'feishuAllowedOpenIds', type: 'textarea', label: '允许发布的 OpenID',
-          description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
-      ].map(field => ({...field, visibleWhen: {field: 'settingsGroup', values: ['feishu']}}))
-    ], load: async() => ({...await service.settings(), settingsGroup: 'external'}), submit: async values => {
-      const {settingsGroup, ...settings} = values;
-      await service.saveSettings(settings);
-      return {message: '基础设置和当前发布方式已保存。'};
+      {name: 'apiKey', type: 'password', label: '外部发布 API Key',
+        description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'},
+      {name: 'wecomCorpId', type: 'text', label: '企业微信 CorpID'},
+      {name: 'wecomCorpSecret', type: 'password', label: '企业微信 CorpSecret', description: '用于下载图片和语音；留空会保留原值。'},
+      {name: 'wecomToken', type: 'password', label: '企业微信回调 Token', description: '留空会保留原值。'},
+      {name: 'wecomEncodingAESKey', type: 'password', label: '企业微信 EncodingAESKey', description: '留空会保留原值。'},
+      {name: 'wechatAppId', type: 'text', label: '公众号 AppID'},
+      {name: 'wechatAppSecret', type: 'password', label: '公众号 AppSecret',
+        description: '用于下载语音，以及图片 URL 不可用时下载临时素材；留空会保留原值。'},
+      {name: 'wechatToken', type: 'password', label: '公众号回调 Token', description: '留空会保留原值。'},
+      {name: 'wechatEncodingAESKey', type: 'password', label: '公众号 EncodingAESKey',
+        description: '服务器配置需要选择安全模式；留空会保留原值。'},
+      {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
+        description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'},
+      {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
+      {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
+        description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
+      {name: 'feishuVerificationToken', type: 'password', label: '飞书 Verification Token',
+        description: '在事件与回调的加密策略中获取；留空会保留原值。'},
+      {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
+        description: '用于回调签名校验和事件解密；留空会保留原值。'},
+      {name: 'feishuAllowedOpenIds', type: 'textarea', label: '飞书允许发布的 OpenID',
+        description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
+    ], load: async() => service.settings(), submit: async values => {
+      await service.saveSettings(values);
+      return {message: '全部设置已保存。'};
     }});
   }
 };

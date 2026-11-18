@@ -10,10 +10,10 @@ function setup(t) {
   const pages = [];
   const noop = () => {};
   const settings = {enabled: true, pageSize: 20, authorId: 1, amapKey: 'private-map-key',
-    apiKey: 'private-api-key', wecomCorpId: 'corp', wecomCorpSecret: 'private-corp-secret',
-    wecomToken: 'private-corp-token', wecomEncodingAESKey: 'private-corp-key',
+    apiKey: 'private-api-key-123456', wecomCorpId: 'corp', wecomCorpSecret: 'private-corp-secret',
+    wecomToken: 'private-corp-token', wecomEncodingAESKey: 'a'.repeat(43),
     wechatAppId: 'wx_app', wechatAppSecret: 'private-wx-secret', wechatToken: 'private-wx-token',
-    wechatEncodingAESKey: 'private-wx-key', wechatAllowedOpenIds: 'wx_user',
+    wechatEncodingAESKey: 'b'.repeat(43), wechatAllowedOpenIds: 'wx_user',
     feishuAppId: 'cli_app', feishuAppSecret: 'private-feishu-secret',
     feishuVerificationToken: 'private-feishu-token', feishuEncryptKey: 'private-feishu-key',
     feishuAllowedOpenIds: 'ou_user'};
@@ -40,46 +40,32 @@ test('references one registered settings resource, not a separate Feishu endpoin
 
 test('loads all existing settings once and reads fresh values on a new load', async t => {
   const {forms: [form], settings, load} = setup(t);
-  assert.deepEqual(await form.load(), {...settings, settingsGroup: 'external'});
+  assert.deepEqual(await form.load(), settings);
   assert.equal(load.mock.callCount(), 1);
   settings.feishuAppId = 'cli_updated';
   assert.equal((await form.load()).feishuAppId, 'cli_updated');
   assert.equal(load.mock.callCount(), 2);
 });
 
-test('keeps every setting in the unified form and groups all four publishing methods', t => {
+test('shows all publishing methods together without an exclusive selector or conditional fields', t => {
   const {forms: [form], settings} = setup(t);
-  const selector = form.fields.find(field => field.name === 'settingsGroup');
-  assert.equal(selector.type, 'radio');
-  assert.deepEqual(selector.options.map(option => option.value), ['external', 'wecom', 'wechat', 'feishu']);
-  assert.deepEqual(form.fields.filter(field => field !== selector).map(field => field.name).sort(),
-    Object.keys(settings).sort());
+  assert.deepEqual(form.fields.map(field => field.name).sort(), Object.keys(settings).sort());
   assert.equal(new Set(form.fields.map(field => field.name)).size, form.fields.length);
-  for (const group of selector.options.map(option => option.value)) {
-    const fields = form.fields.filter(field => field.visibleWhen?.values.includes(group));
-    assert.ok(fields.length > 0);
-    for (const field of fields) {
-      assert.equal(field.visibleWhen.field, selector.name);
-      assert.deepEqual(field.visibleWhen.values, [group]);
-      assert.ok(group === 'external' ? field.name === 'apiKey' : field.name.startsWith(group));
-    }
-  }
-  assert.ok(form.fields.find(field => field.name === 'enabled').visibleWhen === undefined);
+  assert.ok(form.fields.every(field => !field.visibleWhen && field.type !== 'radio'));
+  assert.equal(form.submitLabel, '保存全部设置');
 });
 
-test('submits the visible values without persisting the display selector', async t => {
+test('submits multiple publishing methods together in one save', async t => {
   const {forms: [form]} = setup(t);
   const writes = [];
   t.mock.method(SayService.prototype, 'saveSettings', async values => writes.push(values));
-  const input = {settingsGroup: 'feishu', enabled: false, pageSize: 30, authorId: 2,
-    amapKey: '', feishuAppId: 'cli_changed', feishuAppSecret: ''};
-  assert.match((await form.submit(input)).message, /已保存/);
-  const {settingsGroup, ...expected} = input;
-  assert.deepEqual(writes[0], expected);
-  assert.equal(input.settingsGroup, 'feishu');
+  const input = {enabled: true, pageSize: 30, authorId: 2, apiKey: 'api-key-1234567890',
+    wecomCorpId: 'corp_changed', wechatAppId: 'wx_changed', feishuAppId: 'cli_changed'};
+  assert.match((await form.submit(input)).message, /全部设置已保存/);
+  assert.deepEqual(writes, [input]);
 });
 
-test('saving each visible group preserves the other providers and supports clearing non-secret fields', async t => {
+test('saves all providers concurrently and preserves existing partial-save behavior', async t => {
   const {forms: [form], settings} = setup(t);
   let stored = {...settings};
   t.mock.method(SayService.prototype, 'settings', async() => ({...stored}));
@@ -94,13 +80,19 @@ test('saving each visible group preserves the other providers and supports clear
       stored = JSON.parse(value);
     }
   })};
+  const allValues = {...await form.load(), apiKey: 'all-api-key-1234567890',
+    wecomCorpId: 'corp_all', wechatAppId: 'wx_all', feishuAppId: 'cli_all'};
+  await form.submit(allValues);
+  assert.deepEqual(stored, allValues);
+  assert.deepEqual(await form.load(), allValues);
+
   const changes = {external: {apiKey: 'new-api-key-at-least-16'},
     wecom: {wecomCorpId: 'corp_updated', wecomCorpSecret: ''},
     wechat: {wechatAppId: '', wechatAllowedOpenIds: ''},
     feishu: {feishuAppId: 'cli_updated', feishuAllowedOpenIds: ''}};
-  for (const [settingsGroup, values] of Object.entries(changes)) {
+  for (const values of Object.values(changes)) {
     const before = {...stored};
-    await form.submit({settingsGroup, ...values, pageSize: 30});
+    await form.submit({...values, pageSize: 30});
     for (const name of Object.keys(before)) {
       if (name === 'pageSize') assert.equal(stored[name], 30);
       else if (name === 'wecomCorpSecret') assert.equal(stored[name], before[name]);
@@ -109,6 +101,6 @@ test('saving each visible group preserves the other providers and supports clear
     assert.ok(!Object.hasOwn(stored, 'settingsGroup'));
     const reloaded = await form.load();
     assert.equal(reloaded.pageSize, 30);
-    assert.equal(reloaded.settingsGroup, 'external');
+    assert.ok(!Object.hasOwn(reloaded, 'settingsGroup'));
   }
 });
