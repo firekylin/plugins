@@ -324,7 +324,7 @@ async function feishuCallback({ctx: request, body}) {
             ? `✅ 已合并为碎语 #${result.item.id}。` : `✅ 发布成功，碎语 #${result.item.id}。`;
         } catch (error) {
           text = `❌ ${feishuReply.diagnostic(error)}\n请先核对后台是否已保存，避免重复发布。参考编号：${ref}`;
-          pluginLogger?.error?.(`say: Feishu ${ref}: ${feishuReply.diagnostic(error)}`);
+          pluginLogger?.error?.(`say: Feishu ${ref}: ${feishuReply.diagnostic(error)} ${feishuReply.logDetails(error)}`);
         }
         const completed = {text, sent: false, pendingReply: null};
         // Store the publishing result before attempting a reply. A reply failure must
@@ -343,7 +343,7 @@ async function feishuCallback({ctx: request, body}) {
         await feishuReply.reply(message.messageId, receipt.text, eventKey, settings);
         receipt.sent = true;
       } catch (error) {
-        pluginLogger?.error?.(`say: Feishu reply ${feishuReply.reference(eventKey)}: ${feishuReply.diagnostic(error, 'reply')}`);
+        pluginLogger?.error?.(`say: Feishu reply ${feishuReply.reference(eventKey)}: ${feishuReply.diagnostic(error, 'reply')} ${feishuReply.logDetails(error, 'reply')}`);
       }
     })();
     try { await receipt.pendingReply } finally { receipt.pendingReply = null }

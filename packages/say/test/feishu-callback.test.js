@@ -156,12 +156,15 @@ test('a reply failure is acknowledged; retry only retries the reply, never publi
 test('storage errors send safe diagnostic feedback, not arbitrary exception details', async t => {
   const {request, replies, errors} = setup(t);
   const create = t.mock.method(SayService.prototype, 'create', async() => {
-    throw new Error('postgres://user:secret@private-host/db INSERT ... app-secret verification-token');
+    throw new TypeError('postgres://user:secret@private-host/db INSERT ... app-secret verification-token', {cause: Object.assign(new Error('private SQL'), {code: '23505'})});
   });
   const body = encrypt(message('storage-failure'));
   assert.deepEqual(await request(body, {signed: true}), {});
   assert.equal(replies.length, 1);
   assert.match(replies[0][1], /保存碎语失败/);
+  assert.match(errors[0], /\"stage\":\"save\"/);
+  assert.match(errors[0], /TypeError/);
+  assert.match(errors[0], /23505/);
   assert.match(replies[0][1], /参考编号：[a-f0-9]{16}/);
   assert.doesNotMatch(JSON.stringify([replies, errors]), /postgres:|private-host|INSERT|app-secret|verification-token/);
   await request(body, {signed: true});

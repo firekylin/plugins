@@ -60,6 +60,39 @@ function diagnostic(error, fallback = 'process') {
   return `${stage}失败，请检查后台日志和相关服务配置。`;
 }
 
+// Server-only metadata: never serialize an Error or provider response directly.
+const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'TimeoutError',
+  'AbortError', 'AggregateError', 'DatabaseError', 'QueryFailedError', 'SequelizeDatabaseError',
+  'SequelizeConnectionError', 'SequelizeValidationError', 'AxiosError', 'FetchError']);
+const errorCodes = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
+  'EPIPE', 'EACCES', 'ENOSPC', 'ENOENT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET', '28P01', '42501', '23502', '23503', '23505', '42P01', '42703', '53300',
+  '57P01', '08006', 'ER_ACCESS_DENIED_ERROR', 'ER_BAD_DB_ERROR', 'ER_NO_SUCH_TABLE',
+  'ER_BAD_FIELD_ERROR', 'ER_DUP_ENTRY', 'ER_DATA_TOO_LONG', 'ER_LOCK_DEADLOCK',
+  'ER_LOCK_WAIT_TIMEOUT', 'PROTOCOL_CONNECTION_LOST', 'SQLITE_BUSY', 'SQLITE_CONSTRAINT',
+  'SQLITE_READONLY', 'SQLITE_FULL', 'SQLITE_ERROR', 'AccessDenied', 'InvalidAccessKeyId',
+  'SignatureDoesNotMatch', 'NoSuchBucket', 'RequestTimeout', 'SlowDown', 'ExpiredToken']);
+
+function logDetails(error, fallback = 'process') {
+  const stage = Object.hasOwn(stages, error?.sayStage) ? error.sayStage
+    : Object.hasOwn(stages, fallback) ? fallback : 'process';
+  const causes = [];
+  const seen = new Set();
+  for (let cause = error; cause && causes.length < 5 && !seen.has(cause); cause = cause.cause) {
+    seen.add(cause);
+    const detail = {type: errorNames.has(cause.name) ? cause.name : 'UnknownError'};
+    if (errorCodes.has(cause.code)) detail.code = cause.code;
+    if (Number.isSafeInteger(cause.feishuCode)) detail.feishuCode = cause.feishuCode;
+    // Common fetch, Axios and AWS SDK status fields. No response bodies are read.
+    const status = [cause.httpStatus, cause.status, cause.statusCode,
+      cause.response?.status, cause.$metadata?.httpStatusCode]
+      .find(value => Number.isInteger(value) && value >= 400 && value <= 599);
+    if (status !== undefined) detail.httpStatus = status;
+    causes.push(detail);
+  }
+  return JSON.stringify({stage, causes});
+}
+
 function reference(key) {
   return crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
 }
@@ -84,4 +117,4 @@ async function reply(messageId, text, eventKey, settings, fetchImpl = global.fet
   return result.data;
 }
 
-module.exports = {diagnostic, reference, reply, step};
+module.exports = {diagnostic, logDetails, reference, reply, step};

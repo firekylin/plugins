@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const {diagnostic, reply, step} = require('../lib/feishu-reply');
+const {diagnostic, logDetails, reply, step} = require('../lib/feishu-reply');
 
 function settings(id) {
   return {feishuAppId: `reply-test-${id}`, feishuAppSecret: 'test-secret'};
@@ -68,4 +68,27 @@ test('safe error descriptions distinguish operation, timeout and configuration e
     });
   }
   assert.match(diagnostic(new Error('Feishu token error: private token'), 'reply'), /App ID 和 App Secret/);
+});
+
+
+test('server logs retain bounded safe cause metadata without exception contents', () => {
+  const secret = 'password=secret SQL SELECT private-body';
+  const database = Object.assign(new Error(secret), {name: 'DatabaseError', code: '23505',
+    sql: secret, stack: secret});
+  const wrapper = Object.assign(new TypeError(secret, {cause: database}), {sayStage: 'save'});
+  assert.deepEqual(JSON.parse(logDetails(wrapper)), {stage: 'save', causes: [
+    {type: 'TypeError'}, {type: 'DatabaseError', code: '23505'}]});
+  const upload = Object.assign(new Error(secret), {name: secret, code: 'AccessDenied',
+    $metadata: {httpStatusCode: 403}, response: {data: secret}, cause: wrapper});
+  assert.deepEqual(JSON.parse(logDetails(upload, 'upload')).causes[0],
+    {type: 'UnknownError', code: 'AccessDenied', httpStatus: 403});
+  assert.doesNotMatch(logDetails(upload), /password|SELECT|private-body/);
+  upload.code = secret;
+  upload.status = secret;
+  assert.doesNotMatch(logDetails(upload), /password|SELECT|private-body/);
+  database.cause = upload;
+  assert.equal(JSON.parse(logDetails(upload)).causes.length, 3, 'cycles terminate');
+  let chain = new Error(secret);
+  for (let index = 0; index < 10; index++) chain = new Error(secret, {cause: chain});
+  assert.equal(JSON.parse(logDetails(chain)).causes.length, 5);
 });
