@@ -3,6 +3,7 @@
 const {SayService, secureEqual, strings} = require('./lib/say-service');
 const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feishuMessageEvent,
   verify: verifyFeishu} = require('./lib/feishu');
+const feishuReply = require('./lib/feishu-reply');
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
@@ -11,7 +12,9 @@ const {decrypt, encryptedReply, parseXml, textReply, verify, xmlValue} = require
 
 let service;
 let pluginLogger;
-const feishuEvents = new Set();
+// Best-effort, process-local receipts; not a durable cross-instance deduplication store.
+const feishuEvents = new Map();
+const feishuInFlight = new Map();
 
 const kindOptions = [
   ['文本', 'text'], ['图片', 'image'], ['图文', 'textpic'], ['语音', 'voice'],
@@ -231,36 +234,41 @@ async function fromFeishu(message, settings) {
     return;
   }
   const source = '飞书';
+  const save = async input => ({item: await feishuReply.step('save',
+    () => service.create(input, settings.authorId)), action: 'publish'});
   if (message.messageType === 'text') {
     let text = String(message.content.text || '');
     for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
     text = text.trim();
-    if (!text || text === '/help') return;
+    if (!text) return;
+    if (text === '/help') return {reply: '发送文本、图片、语音、位置或链接即可发布碎语；/merge ID1,ID2 合并碎语。'};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
-    if (merge) return service.merge(merge[1]);
+    if (merge) return {item: await feishuReply.step('merge', () => service.merge(merge[1])), action: 'merge'};
     const musicUrl = text.match(/https?:\/\/(?:y\.)?music\.163\.com\/[^\s]+/i)?.[0];
-    if (musicUrl) return service.create(await enrich({kind: 'music', status: 'public',
-      text: text.replace(musicUrl, '').trim(), url: musicUrl, source}), settings.authorId);
+    if (musicUrl) return save(await feishuReply.step('enrich', () => enrich({kind: 'music', status: 'public',
+      text: text.replace(musicUrl, '').trim(), url: musicUrl, source})));
     if (/^https?:\/\/\S+$/.test(text)) {
-      return service.create({kind: 'link', status: 'public', url: text, title: text, source}, settings.authorId);
+      return save({kind: 'link', status: 'public', url: text, title: text, source});
     }
-    return service.create({kind: 'text', status: 'public', text, source}, settings.authorId);
+    return save({kind: 'text', status: 'public', text, source});
   }
   if (message.messageType === 'image') {
-    const media = await downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings);
-    const url = await uploadBuffer(media.buffer, media);
-    return service.create({kind: 'image', status: 'public', images: [url], source}, settings.authorId);
+    const media = await feishuReply.step('download',
+      () => downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings));
+    const url = await feishuReply.step('upload', () => uploadBuffer(media.buffer, media));
+    return save({kind: 'image', status: 'public', images: [url], source});
   }
   if (message.messageType === 'audio') {
-    const media = await downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings);
-    const url = await uploadBuffer(media.buffer, media);
-    return service.create({kind: 'voice', status: 'public', mediaUrl: url, source}, settings.authorId);
+    const media = await feishuReply.step('download',
+      () => downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings));
+    const url = await feishuReply.step('upload', () => uploadBuffer(media.buffer, media));
+    return save({kind: 'voice', status: 'public', mediaUrl: url, source});
   }
   if (message.messageType === 'location') {
-    return service.create({kind: 'location', status: 'public', latitude: message.content.latitude,
-      longitude: message.content.longitude, label: message.content.name, source}, settings.authorId);
+    return save({kind: 'location', status: 'public', latitude: message.content.latitude,
+      longitude: message.content.longitude, label: message.content.name, source});
   }
-  pluginLogger?.info?.(`say: ignored Feishu message type ${message.messageType || 'unknown'}`);
+  return {reply: '暂不支持这类消息，请发送文本、图片、语音、位置或链接。'};
 }
 
 async function feishuCallback({ctx: request, body}) {
@@ -299,11 +307,46 @@ async function feishuCallback({ctx: request, body}) {
     return request.throw(401, 'Invalid Feishu app ID');
   }
   const message = feishuMessageEvent(payload);
-  if (!message || feishuEvents.has(message.eventId)) return {};
-  await fromFeishu(message, settings);
-  if (message.eventId) {
-    feishuEvents.add(message.eventId);
-    if (feishuEvents.size > 1000) feishuEvents.delete(feishuEvents.values().next().value);
+  if (!message || !strings(settings.feishuAllowedOpenIds).includes(message.openId)) return {};
+  if (!/^om_[A-Za-z0-9_-]{1,256}$/.test(message.messageId)) return {};
+  const eventKey = `${settings.feishuAppId}:${message.eventId || message.messageId}`;
+  let receipt = feishuEvents.get(eventKey);
+  if (!receipt) {
+    let pending = feishuInFlight.get(eventKey);
+    if (!pending) {
+      pending = (async() => {
+        let text;
+        const ref = feishuReply.reference(eventKey);
+        try {
+          const result = await fromFeishu(message, settings);
+          text = result?.reply;
+          if (result?.item) text = result.action === 'merge'
+            ? `✅ 已合并为碎语 #${result.item.id}。` : `✅ 发布成功，碎语 #${result.item.id}。`;
+        } catch (error) {
+          text = `❌ ${feishuReply.diagnostic(error)}\n请先核对后台是否已保存，避免重复发布。参考编号：${ref}`;
+          pluginLogger?.error?.(`say: Feishu ${ref}: ${feishuReply.diagnostic(error)}`);
+        }
+        const completed = {text, sent: false, pendingReply: null};
+        // Store the publishing result before attempting a reply. A reply failure must
+        // never make a webhook retry run the publishing operation again in this process.
+        feishuEvents.set(eventKey, completed);
+        if (feishuEvents.size > 1000) feishuEvents.delete(feishuEvents.keys().next().value);
+        return completed;
+      })();
+      feishuInFlight.set(eventKey, pending);
+    }
+    try { receipt = await pending } finally { feishuInFlight.delete(eventKey) }
+  }
+  if (receipt.text && !receipt.sent) {
+    if (!receipt.pendingReply) receipt.pendingReply = (async() => {
+      try {
+        await feishuReply.reply(message.messageId, receipt.text, eventKey, settings);
+        receipt.sent = true;
+      } catch (error) {
+        pluginLogger?.error?.(`say: Feishu reply ${feishuReply.reference(eventKey)}: ${feishuReply.diagnostic(error, 'reply')}`);
+      }
+    })();
+    try { await receipt.pendingReply } finally { receipt.pendingReply = null }
   }
   return {};
 }
