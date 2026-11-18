@@ -202,7 +202,8 @@ async function feishuAccessToken(settings, fetchImpl = global.fetch, now = Date.
   });
   const result = await response.json();
   if (!response.ok || result.code || !result.tenant_access_token) {
-    throw new Error(`Feishu token error: ${result.msg || response.status}`);
+    throw Object.assign(new Error(`Feishu token error: ${result.msg || response.status}`),
+      {feishuCode: result.code, httpStatus: response.status});
   }
   feishuTokens.set(cacheKey, {value: result.tenant_access_token,
     expiresAt: now() + Math.max(0, Number(result.expire || 7200) - 120) * 1000});
@@ -219,11 +220,13 @@ async function downloadFeishuResource(messageId, fileKey, type, settings, fetchI
   url.searchParams.set('type', type);
   const response = await fetchImpl(url, {headers: {Authorization: `Bearer ${token}`}, redirect: 'error',
     signal: AbortSignal.timeout(10000)});
-  if (!response.ok) throw new Error(`Feishu resource download error: ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(`Feishu resource download error: ${response.status}`),
+    {httpStatus: response.status});
   let mime = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0];
   if (mime === 'application/json') {
     const result = await response.json();
-    throw new Error(`Feishu resource error: ${result.msg || result.code}`);
+    throw Object.assign(new Error(`Feishu resource error: ${result.msg || result.code}`),
+      {feishuCode: result.code, httpStatus: response.status});
   }
   if (mime === 'audio/opus') mime = 'audio/ogg';
   const declaredLength = Number(response.headers.get('content-length') || 0);
