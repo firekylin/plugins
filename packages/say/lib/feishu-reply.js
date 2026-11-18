@@ -40,7 +40,9 @@ function diagnostic(error, fallback = 'process') {
     ? `（飞书错误码 ${cause.feishuCode}）`
     : Number.isInteger(cause?.httpStatus) && cause.httpStatus >= 400 && cause.httpStatus <= 599
       ? `（HTTP ${cause.httpStatus}）` : '';
-  const systemHints = {ECONNREFUSED: '连接被拒绝，请检查数据库或上游服务是否可访问。',
+  const systemHints = {PLUGIN_MEDIA_DENIED: '插件媒体权限不足或插件已停用，请检查插件状态及授权。',
+    MEDIA_OWNER_DENIED: '配置的作者不可用或无上传权限，请检查作者账号。',
+    ECONNREFUSED: '连接被拒绝，请检查数据库或上游服务是否可访问。',
     ETIMEDOUT: '连接超时，请检查网络和服务状态。',
     ENOTFOUND: '域名解析失败，请检查数据库或上游服务地址。',
     '28P01': '数据库认证失败，请检查数据库账号配置。',
@@ -67,7 +69,7 @@ function diagnostic(error, fallback = 'process') {
 const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'TimeoutError',
   'AbortError', 'AggregateError', 'DatabaseError', 'QueryFailedError', 'SequelizeDatabaseError',
   'SequelizeConnectionError', 'SequelizeValidationError', 'AxiosError', 'FetchError']);
-const errorCodes = new Set(['MEDIA_REGISTRATION_FAILED', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
+const errorCodes = new Set(['MEDIA_REGISTRATION_FAILED', 'PLUGIN_MEDIA_DENIED', 'MEDIA_OWNER_DENIED', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
   'EPIPE', 'EACCES', 'ENOSPC', 'ENOENT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
   'UND_ERR_SOCKET', '28P01', '42501', '23502', '23503', '23505', '42P01', '42703', '53300',
   '57P01', '08006', 'ER_ACCESS_DENIED_ERROR', 'ER_BAD_DB_ERROR', 'ER_NO_SUCH_TABLE',

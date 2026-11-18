@@ -55,6 +55,8 @@ test('missing credentials and invalid message IDs do not make any network reques
 
 test('safe error descriptions distinguish operation, timeout and configuration errors', async() => {
   for (const [stage, cause, expected] of [
+    ['upload', Object.assign(new Error('private details'), {code: 'PLUGIN_MEDIA_DENIED'}), /PLUGIN_MEDIA_DENIED.*插件/],
+    ['upload', Object.assign(new Error('private details'), {code: 'MEDIA_OWNER_DENIED'}), /MEDIA_OWNER_DENIED.*作者/],
     ['download', new Error('Feishu resource error: private token'), /下载飞书附件失败.*读取权限/],
     ['upload', Object.assign(new Error('secret endpoint'), {name: 'TimeoutError'}), /上传附件超时/],
     ['merge', new Error('At least two say IDs are required'), /至少两个碎语 ID/],

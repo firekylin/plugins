@@ -18,7 +18,7 @@ function encrypt(payload) {
   return {encrypt: Buffer.concat([iv, cipher.update(JSON.stringify(payload)), cipher.final()]).toString('base64')};
 }
 
-function setup(t, overrides = {}) {
+function setup(t, overrides = {}, media) {
   const published = [];
   const replies = [];
   const errors = [];
@@ -27,7 +27,7 @@ function setup(t, overrides = {}) {
   t.mock.method(SayService.prototype, 'create', async item => { published.push(item); return {...item, id: 42} });
   const routes = [];
   const noop = () => {};
-  plugin.register({logger: {info: noop, error: text => errors.push(text)}, widgets: {Widget: class {}, register: noop},
+  plugin.register({media, logger: {info: noop, error: text => errors.push(text)}, widgets: {Widget: class {}, register: noop},
     templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
     admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
   const route = routes.find(route => route.path === '/feishu');
@@ -222,16 +222,17 @@ test('a real media API error sends safe feedback and never starts storage', asyn
 
 for (const messageType of ['audio', 'image']) {
   test(`signed Feishu ${messageType} event uploads with configured author before publishing`, async t => {
-    const {request, published} = setup(t, {authorId: 27});
+    let hostUpload;
+    const {request, published} = setup(t, {authorId: 27}, {upload: input => hostUpload(input)});
     const oldThink = global.think;
     const oldFirekylin = global.firekylin;
     t.after(() => { global.think = oldThink; global.firekylin = oldFirekylin; });
     const uploads = [];
-    global.think = {model: () => ({getOptions: async() => ({upload: {type: 'r2'}})})};
-    global.firekylin = {uploadMedia: async input => {
+    global.think = {model: () => { throw new Error('Host media must not read ThinkJS models'); }};
+    hostUpload = async input => {
       uploads.push(input);
       return {url: `/uploads/${messageType}`, id: 88};
-    }};
+    };
     t.mock.method(global, 'fetch', async value => {
       if (String(value).includes('/auth/')) {
         return {ok: true, json: async() => ({tenant_access_token: 'test', expire: 7200})};
@@ -247,8 +248,8 @@ for (const messageType of ['audio', 'image']) {
       content: JSON.stringify(messageType === 'audio' ? {file_key: 'file_voice'} : {image_key: 'img_photo'})};
     await request(encrypt(payload), {signed: true});
     assert.equal(uploads.length, 1);
-    assert.equal(uploads[0].userId, 27);
-    assert.equal(uploads[0].file.type, messageType === 'audio' ? 'audio/ogg' : 'image/png');
+    assert.equal(uploads[0].ownerId, 27);
+    assert.equal(uploads[0].mime, messageType === 'audio' ? 'audio/ogg' : 'image/png');
     assert.equal(published.length, 1);
     assert.equal(published[0].kind, messageType === 'audio' ? 'voice' : 'image');
     await request(encrypt(payload), {signed: true});
@@ -259,7 +260,9 @@ for (const messageType of ['audio', 'image']) {
 for (const kind of ['image', 'audio']) {
   for (const outcome of ['success', 'registration-failure', 'reply-failure']) {
     test(`unified ${kind} upload and Feishu feedback: ${outcome}`, async t => {
-      const {request, published, replies, errors} = setup(t, {authorId: 31});
+      let hostUpload;
+      const {request, published, replies, errors} = setup(t, {authorId: 31},
+        {upload: input => hostUpload(input)});
       const oldThink = global.think;
       const oldFirekylin = global.firekylin;
       t.after(() => { global.think = oldThink; global.firekylin = oldFirekylin; });
@@ -268,12 +271,12 @@ for (const kind of ['image', 'audio']) {
       let release;
       const started = new Promise(resolve => { markStarted = resolve });
       const pendingUpload = new Promise(resolve => { release = resolve });
-      global.think = {model: () => ({getOptions: async() => ({upload: {type: 'r2'}})})};
+      global.think = {model: () => { throw new Error('Host media must not read ThinkJS models'); }};
       // Mock the public core API contract; the core tests cover storage/DB internals.
-      global.firekylin = {uploadMedia: async input => {
+      hostUpload = async input => {
         order.push('upload');
-        assert.equal(input.userId, 31);
-        assert.equal(input.file.type, kind === 'audio' ? 'audio/ogg' : 'image/png');
+        assert.equal(input.ownerId, 31);
+        assert.equal(input.mime, kind === 'audio' ? 'audio/ogg' : 'image/png');
         markStarted();
         await pendingUpload;
         if (outcome === 'registration-failure') {
@@ -283,7 +286,7 @@ for (const kind of ['image', 'audio']) {
             retryable: false});
         }
         return {url: '/uploaded-file', id: 55};
-      }};
+      };
       t.mock.method(SayService.prototype, 'create', async(input, authorId) => {
         assert.equal(authorId, 31);
         assert.equal(kind === 'audio' ? input.mediaUrl : input.images[0], '/uploaded-file');
