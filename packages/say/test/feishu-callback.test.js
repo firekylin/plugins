@@ -18,7 +18,7 @@ function encrypt(payload) {
   return {encrypt: Buffer.concat([iv, cipher.update(JSON.stringify(payload)), cipher.final()]).toString('base64')};
 }
 
-function setup(t, overrides = {}) {
+function setup(t, overrides = {}, media) {
   const published = [];
   const replies = [];
   const errors = [];
@@ -27,7 +27,7 @@ function setup(t, overrides = {}) {
   t.mock.method(SayService.prototype, 'create', async item => { published.push(item); return {...item, id: 42} });
   const routes = [];
   const noop = () => {};
-  plugin.register({logger: {info: noop, error: text => errors.push(text)}, widgets: {Widget: class {}, register: noop},
+  plugin.register({media, logger: {info: noop, error: text => errors.push(text)}, widgets: {Widget: class {}, register: noop},
     templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
     admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
   const route = routes.find(route => route.path === '/feishu');
@@ -219,3 +219,119 @@ test('a real media API error sends safe feedback and never starts storage', asyn
   assert.doesNotMatch(replies[0][1], /app-secret|db-password|private-response/);
   assert.equal(published.length, 0);
 });
+
+for (const messageType of ['audio', 'image']) {
+  test(`signed Feishu ${messageType} event uploads with configured author before publishing`, async t => {
+    let hostUpload;
+    const {request, published} = setup(t, {authorId: 27}, {upload: input => hostUpload(input)});
+    const oldThink = global.think;
+    const oldFirekylin = global.firekylin;
+    t.after(() => { global.think = oldThink; global.firekylin = oldFirekylin; });
+    const uploads = [];
+    global.think = {model: () => { throw new Error('Host media must not read ThinkJS models'); }};
+    hostUpload = async input => {
+      uploads.push(input);
+      return {url: `/uploads/${messageType}`, id: 88};
+    };
+    t.mock.method(global, 'fetch', async value => {
+      if (String(value).includes('/auth/')) {
+        return {ok: true, json: async() => ({tenant_access_token: 'test', expire: 7200})};
+      }
+      assert.equal(new URL(value).searchParams.get('type'), messageType === 'audio' ? 'file' : 'image');
+      return {ok: true, headers: new Headers({'content-type': messageType === 'audio'
+        ? 'application/ogg' : 'image/png'}), arrayBuffer: async() => messageType === 'audio'
+        ? Buffer.concat([Buffer.from('OggS'), Buffer.alloc(24), Buffer.from('OpusHead')])
+        : Buffer.from('89504e470d0a1a0a', 'hex')};
+    });
+    const payload = message(`registered-${messageType}`);
+    payload.event.message = {message_id: `om_${messageType}`, message_type: messageType,
+      content: JSON.stringify(messageType === 'audio' ? {file_key: 'file_voice'} : {image_key: 'img_photo'})};
+    await request(encrypt(payload), {signed: true});
+    assert.equal(uploads.length, 1);
+    assert.equal(uploads[0].ownerId, 27);
+    assert.equal(uploads[0].mime, messageType === 'audio' ? 'audio/ogg' : 'image/png');
+    assert.equal(published.length, 1);
+    assert.equal(published[0].kind, messageType === 'audio' ? 'voice' : 'image');
+    await request(encrypt(payload), {signed: true});
+    assert.equal(uploads.length, 1, 'completed event replay must not upload twice');
+  });
+}
+
+for (const kind of ['image', 'audio']) {
+  for (const outcome of ['success', 'registration-failure', 'reply-failure']) {
+    test(`unified ${kind} upload and Feishu feedback: ${outcome}`, async t => {
+      let hostUpload;
+      const {request, published, replies, errors} = setup(t, {authorId: 31},
+        {upload: input => hostUpload(input)});
+      const oldThink = global.think;
+      const oldFirekylin = global.firekylin;
+      t.after(() => { global.think = oldThink; global.firekylin = oldFirekylin; });
+      const order = [];
+      let markStarted;
+      let release;
+      const started = new Promise(resolve => { markStarted = resolve });
+      const pendingUpload = new Promise(resolve => { release = resolve });
+      global.think = {model: () => { throw new Error('Host media must not read ThinkJS models'); }};
+      // Mock the public core API contract; the core tests cover storage/DB internals.
+      hostUpload = async input => {
+        order.push('upload');
+        assert.equal(input.ownerId, 31);
+        assert.equal(input.mime, kind === 'audio' ? 'audio/ogg' : 'image/png');
+        markStarted();
+        await pendingUpload;
+        if (outcome === 'registration-failure') {
+          throw Object.assign(new Error('private database response', {
+            cause: Object.assign(new Error('SELECT private SQL password=secret'), {code: '23505'})
+          }), {code: 'MEDIA_REGISTRATION_FAILED', uploadedUrl: 'https://private.example/file?token=secret',
+            retryable: false});
+        }
+        return {url: '/uploaded-file', id: 55};
+      };
+      t.mock.method(SayService.prototype, 'create', async(input, authorId) => {
+        assert.equal(authorId, 31);
+        assert.equal(kind === 'audio' ? input.mediaUrl : input.images[0], '/uploaded-file');
+        order.push('say'); published.push(input); return {...input, id: 91};
+      });
+      let attempts = 0;
+      t.mock.method(feishuReply, 'reply', async(...args) => {
+        order.push('reply'); replies.push(args);
+        if (++attempts === 1 && outcome === 'reply-failure') throw new Error('private reply response');
+      });
+      t.mock.method(global, 'fetch', async value => {
+        if (String(value).includes('/auth/')) return {ok: true,
+          json: async() => ({tenant_access_token: 'test', expire: 7200})};
+        assert.equal(new URL(value).searchParams.get('type'), kind === 'audio' ? 'file' : 'image');
+        return {ok: true, headers: new Headers({'content-type': kind === 'audio' ? 'application/ogg' : 'image/png'}),
+          arrayBuffer: async() => kind === 'audio' ? Buffer.from('OggS-opus-fixture')
+            : Buffer.from('89504e470d0a1a0a', 'hex')};
+      });
+      const payload = message(`unified-${kind}-${outcome}`);
+      payload.event.message = {message_id: `om_unified_${kind}_${outcome}`, message_type: kind,
+        content: JSON.stringify(kind === 'audio' ? {file_key: 'file_voice'} : {image_key: 'img_photo'})};
+      const body = encrypt(payload);
+      const pending = [request(body, {signed: true}), request(body, {signed: true})];
+      await started;
+      assert.deepEqual(order, ['upload'], 'do not publish or reply before the unified upload completes');
+      release();
+      await Promise.all(pending);
+      assert.deepEqual(order, outcome === 'registration-failure'
+        ? ['upload', 'reply'] : ['upload', 'say', 'reply']);
+      await request(body, {signed: true});
+      if (outcome === 'registration-failure') {
+        assert.equal(published.length, 0);
+        assert.equal(replies.length, 1);
+        assert.match(replies[0][1], /文件已上传，但媒体登记失败.*勿直接重发/);
+        assert.doesNotMatch(replies[0][1], /发布成功/);
+        assert.match(errors[0], /MEDIA_REGISTRATION_FAILED/);
+        assert.match(errors[0], /23505/);
+      } else {
+        assert.equal(published.length, 1);
+        assert.equal(replies.length, outcome === 'reply-failure' ? 2 : 1);
+        assert.match(replies[0][1], /发布成功.*#91/);
+      }
+      assert.equal(order.filter(step => step === 'upload').length, 1);
+      assert.doesNotMatch(JSON.stringify([replies, errors]),
+        /private\.example|token=secret|SELECT|password=secret|private database|private reply/);
+    });
+  }
+}

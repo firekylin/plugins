@@ -20,7 +20,7 @@
     "type": "plugin",
     "id": "say",
     "entry": "plugin.js",
-    "permissions": ["content:read", "content:write"]
+    "permissions": ["content:read", "content:write", "media:write"]
   },
   "files": ["lib", "plugin.js", "README.md"]
 }

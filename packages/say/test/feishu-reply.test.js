@@ -56,6 +56,8 @@ test('missing credentials and invalid message IDs do not make any network reques
 
 test('safe error descriptions distinguish operation, timeout and configuration errors', async() => {
   for (const [stage, cause, expected] of [
+    ['upload', Object.assign(new Error('private details'), {code: 'PLUGIN_MEDIA_DENIED'}), /PLUGIN_MEDIA_DENIED.*插件/],
+    ['upload', Object.assign(new Error('private details'), {code: 'MEDIA_OWNER_DENIED'}), /MEDIA_OWNER_DENIED.*作者/],
     ['download', new Error('Feishu resource error: private token'), /下载附件失败.*读取权限/],
     ['upload', Object.assign(new Error('secret endpoint'), {name: 'TimeoutError'}), /上传附件超时/],
     ['merge', new Error('At least two say IDs are required'), /至少两个碎语 ID/],
@@ -92,4 +94,20 @@ test('server logs retain bounded safe cause metadata without exception contents'
   let chain = new Error(secret);
   for (let index = 0; index < 10; index++) chain = new Error(secret, {cause: chain});
   assert.equal(JSON.parse(logDetails(chain)).causes.length, 5);
+});
+
+test('partial upload failures explain retained storage and log only the safe code', async() => {
+  const cause = Object.assign(new Error('secret SQL SELECT password=secret'), {
+    code: 'MEDIA_REGISTRATION_FAILED', uploadedUrl: 'https://private.example/file?token=secret',
+    storage: 'private-storage', retryable: false,
+    cause: Object.assign(new Error('private database response'), {code: '23505'})
+  });
+  for (const error of [cause, await step('upload', async() => { throw cause }).catch(error => error)]) {
+    assert.match(diagnostic(error), /文件已上传，但媒体登记失败.*勿直接重发/);
+    const details = JSON.parse(logDetails(error, 'upload'));
+    assert.ok(details.causes.some(item => item.code === 'MEDIA_REGISTRATION_FAILED'));
+    assert.ok(details.causes.some(item => item.code === '23505'));
+    assert.doesNotMatch(diagnostic(error) + logDetails(error),
+      /private|https:|token=secret|SQL|SELECT|password|uploadedUrl|storage/);
+  }
 });

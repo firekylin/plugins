@@ -9,7 +9,7 @@ const feedback = require('./lib/publish-feedback');
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
-  uploadBase64, uploadBuffer} = require('./lib/media');
+  createMediaClient} = require('./lib/media');
 const {decrypt, encryptedReply, parseXml, textReply, verify, xmlValue} = require('./lib/wecom');
 
 let service;
@@ -69,16 +69,17 @@ function setCors(request) {
   request.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
 }
 
-async function ingestApiMedia(body) {
+async function ingestApiMedia(body, userId, mediaClient) {
   const input = {...body};
   const encodedImages = Array.isArray(body.imagesBase64) ? body.imagesBase64
     : body.imageBase64 ? [body.imageBase64] : [];
   if (encodedImages.length) {
     input.images = [...strings(body.images), ...await Promise.all(encodedImages.slice(0, 20).map((value, index) =>
-      uploadBase64(value, {filename: `say-image-${Date.now()}-${index}.jpg`, mime: body.imageMime || 'image/jpeg'})))];
+      mediaClient.uploadBase64(value, {filename: `say-image-${Date.now()}-${index}.jpg`,
+        mime: body.imageMime || 'image/jpeg', userId})))];
   }
-  if (body.mediaBase64) input.mediaUrl = await uploadBase64(body.mediaBase64,
-    {filename: body.mediaName || `say-voice-${Date.now()}.mp3`, mime: body.mediaMime || 'audio/mpeg'});
+  if (body.mediaBase64) input.mediaUrl = await mediaClient.uploadBase64(body.mediaBase64,
+    {filename: body.mediaName || `say-voice-${Date.now()}.mp3`, mime: body.mediaMime || 'audio/mpeg', userId});
   return input;
 }
 
@@ -96,7 +97,7 @@ function replaceEmoji(value) {
   return Object.entries(emoji).reduce((text, [code, replacement]) => text.replaceAll(code, replacement), String(value || ''));
 }
 
-async function fromWecom(message, settings) {
+async function fromWecom(message, settings, mediaClient) {
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = replaceEmoji(message.Content).trim();
@@ -114,7 +115,7 @@ async function fromWecom(message, settings) {
   if (type === 'image' || type === 'voice') {
     if (!settings.wecomCorpSecret) throw new Error('WeCom CorpSecret is not configured');
     const media = await feedback.step('download', () => downloadWecomMedia(message.MediaId, settings));
-    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => mediaClient.uploadBuffer(media.buffer, {...media, userId: settings.authorId}));
     const input = type === 'image' ? {kind: 'image', images: [url]} : {kind: 'voice', mediaUrl: url};
     return {item: await feedback.step('save', () => service.create({...input, status: 'public', source: '企业微信'}, settings.authorId))};
   }
@@ -125,7 +126,7 @@ async function fromWecom(message, settings) {
   return {reply: feedback.unsupported};
 }
 
-async function wecomCallback({ctx: request, query, body}) {
+async function wecomCallback({ctx: request, query, body}, mediaClient) {
   const settings = await service.settings();
   if (!settings.enabled || !settings.wecomCorpId || !settings.wecomToken || !settings.wecomEncodingAESKey) {
     return request.throw(503, 'WeCom callback is not configured');
@@ -141,7 +142,7 @@ async function wecomCallback({ctx: request, query, body}) {
   if (!encrypted || !verify({token: settings.wecomToken, timestamp: query.timestamp, nonce: query.nonce,
     encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeCom signature');
   const message = parseXml(decrypt(encrypted, settings.wecomEncodingAESKey, settings.wecomCorpId));
-  const content = await feedback.receive(() => fromWecom(message, settings), `wecom:${message.MsgId || message.CreateTime}`, pluginLogger);
+  const content = await feedback.receive(() => fromWecom(message, settings, mediaClient), `wecom:${message.MsgId || message.CreateTime}`, pluginLogger);
   const reply = textReply(message.FromUserName, message.ToUserName, content);
   request.type = 'application/xml; charset=utf-8';
   return encryptedReply(reply, settings);
@@ -153,7 +154,7 @@ function wechatReply(message, content, settings) {
     wecomCorpId: settings.wechatAppId, wecomToken: settings.wechatToken});
 }
 
-async function fromWechat(message, settings) {
+async function fromWechat(message, settings, mediaClient) {
   const allowed = new Set(strings(settings.wechatAllowedOpenIds));
   if (!allowed.has(message.FromUserName)) {
     pluginLogger?.info?.(`say: rejected WeChat publisher OpenID ${message.FromUserName}`);
@@ -182,14 +183,14 @@ async function fromWechat(message, settings) {
       if (!settings.wechatAppSecret) throw error;
       media = await feedback.step('download', () => downloadWechatMedia(message.MediaId, settings));
     }
-    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => mediaClient.uploadBuffer(media.buffer, {...media, userId: settings.authorId}));
     return {item: await feedback.step('save', () => service.create({kind: 'image', images: [url], status: 'public',
       source: '微信公众号'}, settings.authorId))};
   }
   if (type === 'voice') {
     if (!settings.wechatAppSecret) throw new Error('WeChat AppSecret is not configured');
     const media = await feedback.step('download', () => downloadWechatMedia(message.MediaId, settings));
-    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => mediaClient.uploadBuffer(media.buffer, {...media, userId: settings.authorId}));
     return {item: await feedback.step('save', () => service.create({kind: 'voice', mediaUrl: url, status: 'public',
       source: '微信公众号'}, settings.authorId))};
   }
@@ -201,7 +202,7 @@ async function fromWechat(message, settings) {
   return {reply: feedback.unsupported};
 }
 
-async function wechatCallback({ctx: request, query, body}) {
+async function wechatCallback({ctx: request, query, body}, mediaClient) {
   const settings = await service.settings();
   if (!settings.enabled || !settings.wechatAppId || !settings.wechatToken || !settings.wechatEncodingAESKey) {
     return request.throw(503, 'WeChat callback is not configured');
@@ -217,7 +218,7 @@ async function wechatCallback({ctx: request, query, body}) {
   if (!encrypted || !verify({token: settings.wechatToken, timestamp: query.timestamp, nonce: query.nonce,
     encrypted, msgSignature: query.msg_signature})) return request.throw(401, 'Invalid WeChat signature');
   const message = parseXml(decrypt(encrypted, settings.wechatEncodingAESKey, settings.wechatAppId));
-  const content = await feedback.receive(() => fromWechat(message, settings), `wechat:${message.MsgId || message.CreateTime}`, pluginLogger);
+  const content = await feedback.receive(() => fromWechat(message, settings, mediaClient), `wechat:${message.MsgId || message.CreateTime}`, pluginLogger);
   request.type = 'application/xml; charset=utf-8';
   return wechatReply(message, content, settings);
 }
@@ -229,7 +230,7 @@ function rawJsonRequestBody(request, body) {
   return JSON.stringify(body || {});
 }
 
-async function fromFeishu(message, settings) {
+async function fromFeishu(message, settings, mediaClient) {
   const allowed = new Set(strings(settings.feishuAllowedOpenIds));
   if (!allowed.has(message.openId)) {
     pluginLogger?.info?.(`say: rejected Feishu publisher OpenID ${message.openId}`);
@@ -257,13 +258,13 @@ async function fromFeishu(message, settings) {
   if (message.messageType === 'image') {
     const media = await feedback.step('download',
       () => downloadFeishuResource(message.messageId, message.content.image_key, 'image', settings));
-    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => mediaClient.uploadBuffer(media.buffer, {...media, userId: settings.authorId}));
     return save({kind: 'image', status: 'public', images: [url], source});
   }
   if (message.messageType === 'audio') {
     const media = await feedback.step('download',
       () => downloadFeishuResource(message.messageId, message.content.file_key, 'file', settings));
-    const url = await feedback.step('upload', () => uploadBuffer(media.buffer, media));
+    const url = await feedback.step('upload', () => mediaClient.uploadBuffer(media.buffer, {...media, userId: settings.authorId}));
     return save({kind: 'voice', status: 'public', mediaUrl: url, source});
   }
   if (message.messageType === 'location') {
@@ -273,7 +274,7 @@ async function fromFeishu(message, settings) {
   return {reply: feedback.unsupported};
 }
 
-async function feishuCallback({ctx: request, body}) {
+async function feishuCallback({ctx: request, body}, mediaClient) {
   const settings = await service.settings();
   if (!settings.enabled || !settings.feishuAppId || !settings.feishuVerificationToken ||
       !settings.feishuEncryptKey) return request.throw(503, 'Feishu callback is not configured');
@@ -319,7 +320,7 @@ async function feishuCallback({ctx: request, body}) {
       pending = (async() => {
         let text;
         try {
-          const result = await fromFeishu(message, settings);
+          const result = await fromFeishu(message, settings, mediaClient);
           text = result?.reply || (result?.item ? feedback.success(result.item, result.action) : undefined);
         } catch (error) {
           text = feedback.failure(error, eventKey, pluginLogger);
@@ -351,6 +352,7 @@ async function feishuCallback({ctx: request, body}) {
 
 module.exports = {
   register(ctx) {
+    const mediaClient = createMediaClient(ctx.media);
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
     pluginLogger = ctx.logger;
     class SayWidget extends ctx.widgets.Widget {
@@ -374,7 +376,7 @@ module.exports = {
       if (!settings.enabled) return request.throw(503, 'Say publishing is disabled');
       if (!secureEqual(request.get('X-Say-API-Key'), settings.apiKey)) return request.throw(401, 'Invalid API key');
       try {
-        const input = await feedback.step('upload', () => ingestApiMedia({...body, source: body.source || 'API'}));
+        const input = await feedback.step('upload', () => ingestApiMedia({...body, source: body.source || 'API'}, settings.authorId, mediaClient));
         const enriched = await feedback.step('enrich', () => enrich(input));
         const item = await feedback.step('save', () => service.create(enriched, settings.authorId));
         return {...item, success: true, message: feedback.success(item)};
@@ -383,9 +385,12 @@ module.exports = {
         return {success: false, message: feedback.failure(error, `api:${randomUUID()}`, pluginLogger)};
       }
     }});
-    ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false, handler: wecomCallback});
-    ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false, handler: wechatCallback});
-    ctx.routes.register({method: 'POST', path: '/feishu', csrf: false, handler: feishuCallback});
+    ctx.routes.register({method: ['GET', 'POST'], path: '/wecom', csrf: false,
+      handler: request => wecomCallback(request, mediaClient)});
+    ctx.routes.register({method: ['GET', 'POST'], path: '/wechat', csrf: false,
+      handler: request => wechatCallback(request, mediaClient)});
+    ctx.routes.register({method: 'POST', path: '/feishu', csrf: false,
+      handler: request => feishuCallback(request, mediaClient)});
     const renderPage = async(request, query, tag = '') => {
       const settings = await service.settings();
       const result = await service.list({...query, tag, publicOnly: true});
