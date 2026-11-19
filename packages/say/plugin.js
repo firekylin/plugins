@@ -12,6 +12,7 @@ let qqGateway;
 const {renderSayPage} = require('./lib/render');
 const {renderComments} = require('./lib/comment-render');
 const {SayComments} = require('./lib/comments');
+const {FrontendPublish, renderComposer} = require('./lib/frontend-publish');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
   createMediaClient} = require('./lib/media');
@@ -375,6 +376,10 @@ module.exports = {
     pluginLogger = ctx.logger;
     const comments = new SayComments({say: service, getModel: name => think.model(name),
       getService: name => think.service(name), now: value => think.datetime(value), logger: ctx.logger});
+    const publisher = new FrontendPublish({say: service, getModel: name => think.model(name),
+      getService: name => think.service(name)});
+    ctx.routes.register({method: 'POST', path: '/frontend-publish', auth: 'admin', csrf: true,
+      handler: async({ctx: request, body}) => publisher.submit(request, body)});
     qqGateway = createQqGateway({service, mediaClient, logger: ctx.logger});
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
@@ -416,8 +421,11 @@ module.exports = {
       const settings = await service.settings();
       const result = await service.list({...query, tag, publicOnly: true});
       const options = await think.model('options').getOptions();
+      const identity = await publisher.identity(request);
+      request.set('Cache-Control', 'private, no-store');
       request.type = 'text/html; charset=utf-8';
-      request.body = renderSayPage(result, {title: `${options.title || ''} · 碎语`, tag, amapKey: settings.amapKey});
+      request.body = renderSayPage(result, {title: `${options.title || ''} · 碎语`, tag, amapKey: settings.amapKey,
+        composer: renderComposer(identity, settings.enabled)});
     };
     ctx.routes.register({method: 'GET', path: '/says', scope: 'site', csrf: false,
       handler: async({ctx: request, query}) => renderPage(request, query, String(query.tag || ''))});
