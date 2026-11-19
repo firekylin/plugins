@@ -553,3 +553,5 @@ QQ、企业微信、公众号、飞书和外部 API 的处理失败会返回经�
 输入文字（支持 `#标签`），点击「公开发布」后返回列表查看结果。首版是文字公开发布，评论默认关闭；图片等其他类型、状态和评论开关仍在后台编辑。发布中按钮禁用，失败保留输入，不自动重试；网络异常时请先刷新列表核实是否已发布。
 
 使用独立的 `POST /api/plugins/say/frontend-publish`，要求后台会话、会话绑定的 CSRF 令牌、同源 Origin 和 JSON。不会把外部发布 API Key 放进页面。列表响应使用 `private, no-store`，部署时也不要在 CDN 上强制缓存这些带登录状态的页面。关闭插件公开发布开关会隐藏发布入口并拒绝提交。
+
+QQ 附件下载失败时，参考编号对应日志中的 `download` 会记录失败阶段（`dns`、`connect`、`response`、`redirect`、`body`）、重定向次数和经过白名单筛选的网络错误码。`deadline` 表示整体下载超时；`ENOTFOUND` 表示 DNS 解析失败；`ERR_TLS_CERT_ALTNAME_INVALID` 表示证书主机名不匹配；`ENETUNREACH` / `ECONNRESET` 表示网络不可达 / 连接重置。日志不记录附件 URL、查询参数或上游错误正文。
