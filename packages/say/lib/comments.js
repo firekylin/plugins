@@ -28,6 +28,9 @@ class SayComments {
     return item;
   }
 
+  // Native Waline submissions bypass submit()/create() below. Apply Say's
+  // enablement/comment switches and review-before-publication policy here.
+  // Other post types keep the core's policy; existing spam stays spam.
   async beforeNativeCreate(data) {
     const host = require('firekylin/src/service/comment');
     const options = await this.getModel('options').getOptions();

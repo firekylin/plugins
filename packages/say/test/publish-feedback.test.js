@@ -18,7 +18,7 @@ function setup(t) {
   const routes = [];
   const noop = () => {};
   plugin.register({logger: {info: noop, error: noop}, widgets: {Widget: class {}, register: noop},
-    templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
+    events: {on: noop}, templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
     admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
   return {create, async call(channel, content = 'hello', {sender = 'publisher', invalidSignature = false} = {}) {
     const ctx = {method: 'POST', request: {}, set: noop, get: () => 'valid-key',

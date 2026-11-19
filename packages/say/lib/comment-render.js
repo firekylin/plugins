@@ -57,13 +57,6 @@ function renderComments(id, result, config) {
 }
 module.exports = {renderComments};
 
-function supportsNativeComments(resolve) {
-  try {
-    const target = (resolve || require('firekylin/src/service/comment').pathnameFromUrl)('/says?pathname=probe&type=3');
-    return target?.pathname === 'probe' && target.type === 3;
-  } catch { return false }
-}
-
 function renderWalineComments(item, {options, public: publicConfig}) {
   const settings = options.comment || {};
   const config = {
@@ -102,4 +95,3 @@ function renderWalineComments(item, {options, public: publicConfig}) {
 }
 
 module.exports.renderWalineComments = renderWalineComments;
-module.exports.supportsNativeComments = supportsNativeComments;

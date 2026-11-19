@@ -28,7 +28,7 @@ function setup(t, overrides = {}, media) {
   const routes = [];
   const noop = () => {};
   plugin.register({media, logger: {info: noop, error: text => errors.push(text)}, widgets: {Widget: class {}, register: noop},
-    templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
+    events: {on: noop}, templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
     admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
   const route = routes.find(route => route.path === '/feishu');
   assert.equal(route.method, 'POST');

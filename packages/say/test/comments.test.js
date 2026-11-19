@@ -155,17 +155,27 @@ test('real host identity, input validation and moderation interoperate with Say'
 test('registered detail and comment routes respect visibility without changing native routes', async t => {
   const {SayService} = require('../lib/say-service');
   const routes = [];
+  const hooks = [];
   const noop = () => {};
   t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: false}));
   const get = t.mock.method(SayService.prototype, 'get', async() => ({id: 7, status: 'public', text: 'hello', tags: []}));
-  require('../plugin').register({widgets: {Widget: class {}, register: noop}, templates: {registerFunction: noop},
+  require('../plugin').register({widgets: {Widget: class {}, register: noop}, events: {on: (name, handler) => hooks.push({name, handler})}, templates: {registerFunction: noop},
     routes: {register: route => routes.push(route)}, admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
+  assert.equal(hooks.length, 1);
+  assert.equal(hooks[0].name, 'comment.beforeCreate');
+  assert.equal(typeof hooks[0].handler, 'function');
   assert.equal(routes.filter(route => route.path === '/comments/:id').length, 2);
   assert.ok(routes.every(route => !route.path.startsWith('/api/comment')));
   const detail = routes.find(route => route.path === '/says/:id');
   const request = {set() {}, throw(status) {throw Object.assign(new Error(), {status})}};
   await detail.handler({ctx: request, params: {id: '7'}, query: {}});
   assert.match(request.body, /评论已关闭/);
+  t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: true}));
+  get.mock.mockImplementation(async() => ({id: 7, pathname: 'example', status: 'public', allowComments: true, text: 'hello', tags: []}));
+  t.mock.method(SayComments.prototype, 'configuration', async() => ({options: {}, public: {}}));
+  await detail.handler({ctx: request, params: {id: '7'}, query: {}});
+  assert.match(request.body, /client.init/);
+  assert.doesNotMatch(request.body, /say-comment-form/);
   get.mock.mockImplementation(async() => ({id: 7, status: 'private'}));
   await assert.rejects(detail.handler({ctx: request, params: {id: '7'}, query: {}}), {status: 404});
 });

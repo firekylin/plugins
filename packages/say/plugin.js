@@ -9,7 +9,7 @@ const feedback = require('./lib/publish-feedback');
 const {isWhoami, whoami} = require('./lib/commands');
 const {createQqWebhook} = require('./lib/qq-webhook');
 const {renderSayPage} = require('./lib/render');
-const {renderComments, renderWalineComments, supportsNativeComments} = require('./lib/comment-render');
+const {renderWalineComments} = require('./lib/comment-render');
 const {SayComments} = require('./lib/comments');
 const {FrontendPublish, renderComposer} = require('./lib/frontend-publish');
 const {resolveNeteaseMusic} = require('./lib/netease');
@@ -375,9 +375,7 @@ module.exports = {
     pluginLogger = ctx.logger;
     const comments = new SayComments({say: service, getModel: name => think.model(name),
       getService: name => think.service(name), now: value => think.datetime(value), logger: ctx.logger});
-    if (supportsNativeComments()) {
-      ctx.events.on('comment.beforeCreate', data => comments.beforeNativeCreate(data));
-    }
+    ctx.events.on('comment.beforeCreate', data => comments.beforeNativeCreate(data));
     const publisher = new FrontendPublish({say: service, getModel: name => think.model(name),
       getService: name => think.service(name)});
     ctx.routes.register({method: 'POST', path: '/frontend-publish', auth: 'admin', csrf: true,
@@ -448,12 +446,7 @@ module.exports = {
         let section = '<p>评论已关闭。</p>';
         if (settings.commentsEnabled && item.allowComments) {
           const config = await comments.configuration();
-          if (supportsNativeComments() && item.pathname) {
-            section = renderWalineComments(item, config);
-          } else {
-            const listed = await comments.list(item.id, query.page);
-            section = renderComments(item.id, listed, config.public);
-          }
+          section = renderWalineComments(item, config);
         }
         request.type = 'text/html';
         request.set('Cache-Control', 'no-store');
