@@ -14,7 +14,7 @@ test('QQ uses cached credentials, selected sandbox and a stable passive reply se
   await Promise.all([api.token(), api.token()]);
   await api.reply('USER', 'MSG', '已发布 #1', 23);
   assert.equal(calls.length, 2);
-  assert.equal(calls[0].url, 'https://api.bot.qq.com/app/getAppAccessToken');
+  assert.equal(calls[0].url, 'https://bots.qq.com/app/getAppAccessToken');
   assert.deepEqual(JSON.parse(calls[0].options.body), {appId: 'app', clientSecret: 'secret'});
   assert.equal(calls[1].url, 'https://sandbox.api.sgroup.qq.com/v2/users/USER/messages');
   assert.equal(calls[1].options.headers.Authorization, 'QQBot TOKEN');
@@ -66,3 +66,26 @@ test('QQ download bounds both advertised and streamed bytes', async() => {
   }});
   await assert.rejects(readBytes(new Response(stream), 8), {code: 'MEDIA_SIZE_INVALID'});
 });
+
+
+for (const qqSandbox of [false, true]) {
+  test(`QQ token endpoint is independent of sandbox=${qqSandbox}`, async() => {
+    const calls = [];
+    const api = createQqApi({qqAppId: 'app', qqAppSecret: 'secret', qqSandbox}, {
+      fetchImpl: async(url, options) => {
+        calls.push(url);
+        if (url === 'https://bots.qq.com/app/getAppAccessToken') {
+          assert.equal(options.method, 'POST');
+          return json({access_token: 'T', expires_in: 7200});
+        }
+        assert.equal(options.headers.Authorization, 'QQBot T');
+        return json({id: 'reply'});
+      }
+    });
+    await api.reply('USER', 'MESSAGE', 'identity response');
+    assert.deepEqual(calls, [
+      'https://bots.qq.com/app/getAppAccessToken',
+      `${qqSandbox ? 'https://sandbox.api.sgroup.qq.com' : 'https://api.bot.qq.com'}/v2/users/USER/messages`
+    ]);
+  });
+}
