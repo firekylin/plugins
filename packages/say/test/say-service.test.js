@@ -22,6 +22,7 @@ function matches(row, where = {}) {
 
 function fixture() {
   const rows = [];
+  const comments = [];
   const options = new Map();
   let nextId = 1;
   class PostModel {
@@ -66,7 +67,7 @@ function fixture() {
     async find() { return options.has(this.key) ? {key: this.key, value: options.get(this.key)} : {} },
     async updateOptions(key, value) { options.set(key, value) }
   };
-  return {rows, service: new SayService({getModel: name => name === 'post' ? post : option,
+  return {rows, comments, service: new SayService({getModel: name => name === 'post' ? post : name === 'comment' ? {where(where) { return {count: async() => comments.filter(row => matches(row, where)).length} }} : option,
     now: () => '2026-10-14 12:00:00'})};
 }
 
@@ -81,7 +82,7 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.throws(() => normalize({kind: 'unknown', text: 'content'}), /Invalid say kind/);
   assert.throws(() => normalize({status: 'privte', text: 'content'}), /Invalid say status/);
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
-    {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
+    {enabled: true, commentsEnabled: false, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
       wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: '', feishuAppId: '',
       feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '', feishuAllowedOpenIds: '',
@@ -170,4 +171,22 @@ test('compares API keys safely and escapes the standalone page', () => {
     text: '<script>alert(1)</script>', tags: ['x'], createdAt: 'now'}]}, {title: 'Site'});
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /&lt;script&gt;/);
+});
+
+
+test('comment switches persist and comments prevent destructive operations', async() => {
+  const {service, comments, rows} = fixture();
+  const a = await service.create({text: 'hello', allowComments: true}, 7);
+  const b = await service.create({kind: 'image', images: ['https://example.test/a.png']}, 7);
+  assert.equal((await service.get(a.id)).allowComments, true);
+  await service.update(a.id, {text: 'edited'});
+  assert.equal((await service.get(a.id)).allowComments, true);
+  comments.push({post_id: a.id, status: 'waiting'});
+  await assert.rejects(service.merge([a.id, b.id]), {status: 409});
+  await assert.rejects(service.remove([a.id, b.id]), {status: 409});
+  assert.equal(rows.length, 2);
+  await service.updateStatus(a.id, 'private');
+  assert.equal((await service.get(a.id)).status, 'private');
+  comments.length = 0;
+  assert.equal(await service.remove(a.id), 1);
 });

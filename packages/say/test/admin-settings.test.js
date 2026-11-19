@@ -9,7 +9,7 @@ function setup(t) {
   const forms = [];
   const pages = [];
   const noop = () => {};
-  const settings = {enabled: true, pageSize: 20, authorId: 1, amapKey: 'private-map-key',
+  const settings = {enabled: true, commentsEnabled: false, pageSize: 20, authorId: 1, amapKey: 'private-map-key',
     apiKey: 'private-api-key-123456', wecomCorpId: 'corp', wecomCorpSecret: 'private-corp-secret',
     wecomToken: 'private-corp-token', wecomEncodingAESKey: 'a'.repeat(43),
     wechatAppId: 'wx_app', wechatAppSecret: 'private-wx-secret', wechatToken: 'private-wx-token',

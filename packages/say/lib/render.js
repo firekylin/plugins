@@ -33,12 +33,12 @@ function media(item, options = {}) {
   return '';
 }
 
-function renderSayPage(result, {title = '碎语', tag = '', amapKey = ''} = {}) {
+function renderSayPage(result, {title = '碎语', tag = '', amapKey = '', section = '', composer = ''} = {}) {
   const items = result.items.map(item => `<article class="say-item">
     <div class="say-text">${escapeHtml(item.text).replaceAll('\n', '<br>')}</div>
     ${media(item, {amapKey})}
     <footer>${item.tags.map(value => `<a href="/says/tag/${encodeURIComponent(value)}">#${escapeHtml(value)}</a>`).join(' ')}
-      <time>${escapeHtml(item.createdAt)}</time></footer>
+      <a href="/says/${Number(item.id)}">详情 / 评论 ${Number(item.commentCount) || 0}</a><time>${escapeHtml(item.createdAt)}</time></footer>
   </article>`).join('');
   const previous = result.page > 1 ? `<a href="?page=${result.page - 1}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}">上一页</a>` : '';
   const next = result.page * result.pageSize < result.total
@@ -51,8 +51,8 @@ function renderSayPage(result, {title = '碎语', tag = '', amapKey = ''} = {}) 
   .say-map{display:block;width:100%;max-height:240px;object-fit:cover;border-radius:6px}.say-card{display:flex;gap:12px;align-items:center;margin-top:12px}.say-card img{width:72px;height:72px;object-fit:cover;border-radius:6px}.say-card p{margin:0}.say-card small{display:block;color:#888}
   footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;color:#888;font-size:13px}footer time{margin-left:auto}a{color:#1677ff;text-decoration:none}
   nav{display:flex;justify-content:space-between;margin-top:24px}.say-empty{color:#888}</style></head><body><main class="say-wrap">
-  <h1>${escapeHtml(tag ? `#${tag}` : title)}</h1>${items || '<p class="say-empty">暂无碎语</p>'}<nav>${previous}<span></span>${next}</nav>
-  </main></body></html>`;
+  <h1>${escapeHtml(tag ? `#${tag}` : title)}</h1>${composer}${items || '<p class="say-empty">暂无碎语</p>'}<nav>${previous}<span></span>${next}</nav>
+  ${section}</main></body></html>`;
 }
 
 module.exports = {escapeHtml, renderSayPage};
