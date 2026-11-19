@@ -150,3 +150,32 @@ test('QQ rejects unsupported structured and mixed attachments without downloadin
   assert.equal(f.downloads.length, 0);
   assert.equal(f.writes.length, 0);
 });
+
+
+test('long QQ indexes allow whoami without allowlisting and retain duplicate protection', async() => {
+  const f = fixture();
+  f.settings.qqAllowedOpenIds = '';
+  const prefix = 'x'.repeat(256);
+  const first = f.event({content: '/whoami', message_scene: {ext: [`msg_idx=${prefix}A`]}});
+  const second = f.event({content: '/whoami', message_scene: {ext: [`msg_idx=${prefix}B`]}});
+  await f.run(first);
+  await f.run(first);
+  await f.run(second);
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.replies.length, 2);
+  assert.match(f.replies[0][2], /USER/);
+  assert.notEqual(f.replies[0][3], f.replies[1][3]);
+});
+
+test('unexpected optional index shapes fall back to message-ID deduplication', async() => {
+  for (const index of [{value: 1}, [], true]) {
+    const f = fixture();
+    f.settings.qqAllowedOpenIds = '';
+    const event = f.event({content: '/whoami', msg_seq: index});
+    await f.run(event);
+    await f.run(event);
+    assert.equal(f.replies.length, 1);
+    assert.equal(f.replies[0][3], 1);
+    assert.equal(f.writes.length, 0);
+  }
+});
