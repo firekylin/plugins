@@ -28,6 +28,20 @@ class SayComments {
     return item;
   }
 
+  // Native Waline submissions bypass submit()/create() below. Apply Say's
+  // enablement/comment switches and review-before-publication policy here.
+  // Other post types keep the core's policy; existing spam stays spam.
+  async beforeNativeCreate(data) {
+    const host = require('firekylin/src/service/comment');
+    const options = await this.getModel('options').getOptions();
+    const id = await host.resolveCommentPostId({model: this.getModel}, data.url, options);
+    if (!id) return data;
+    const row = await this.getModel('post').where({id}).field('id,type').find();
+    if (Number(row.type) !== require('./say-service').SAY_TYPE) return data;
+    await this.target(id, true);
+    return {...data, status: data.status === 'spam' ? 'spam' : 'waiting'};
+  }
+
   async configuration() {
     const options = await this.getModel('options').getOptions(true);
     const captcha = this.getService('captcha');
@@ -44,7 +58,7 @@ class SayComments {
   async list(id, page = 1) {
     const target = await this.target(id);
     page = Math.min(100000, Math.max(1, Number.parseInt(page, 10) || 1));
-    const where = {post_id: target.id, url: `/says/${target.id}`, status: 'approved'};
+    const where = {post_id: target.id, status: 'approved'};
     const total = Number(await this.getModel('comment').where(where).count());
     const rows = await this.getModel('comment').where(where).order('id ASC').limit((page - 1) * 20, 20).select();
     // Recheck visibility after database reads, and never expose mail/IP/UA/user IDs or waiting comments.

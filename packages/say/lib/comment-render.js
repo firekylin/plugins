@@ -56,3 +56,42 @@ function renderComments(id, result, config) {
     </script></section>`;
 }
 module.exports = {renderComments};
+
+function renderWalineComments(item, {options, public: publicConfig}) {
+  const settings = options.comment || {};
+  const config = {
+    serverURL: '/api/comment',
+    path: encodeURI(`/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3`),
+    login: publicConfig.forceLogin ? 'force' : 'enable',
+    lang: settings.locale && settings.locale !== 'auto' ? settings.locale : 'zh-CN',
+    pageSize: Number(settings.pageSize) || 10,
+    turnstileKey: publicConfig.captcha?.provider === 'turnstile' ? publicConfig.captcha.siteKey : '',
+    recaptchaV3Key: publicConfig.captcha?.provider === 'recaptcha-v3' ? publicConfig.captcha.siteKey : ''
+  };
+  for (const key of ['meta', 'requiredMeta', 'wordLimit', 'emoji', 'reaction', 'imageUploader',
+    'highlighter', 'texRenderer', 'search', 'noCopyright', 'noRss', 'dark', 'commentSorting']) {
+    if (settings[key] !== undefined) config[key] = settings[key];
+  }
+  return `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@waline/client@3.16.0/dist/waline.css">
+  <section class="say-item"><div id="say-comments" data-config="${esc(JSON.stringify(config))}">评论加载中…</div></section>
+  <script type="module">
+    const container = document.getElementById('say-comments');
+    try {
+      const [client, response] = await Promise.all([
+        import('https://cdn.jsdelivr.net/npm/@waline/client@3.16.0/dist/waline.js'),
+        fetch('/api/comment/api/token', {credentials: 'same-origin'})
+      ]);
+      const result = await response.json();
+      if (!response.ok || result.errno !== 0) throw new Error('session');
+      if (result.data?.objectId) localStorage.setItem('WALINE_USER', JSON.stringify({...result.data, remember: true}));
+      else localStorage.removeItem('WALINE_USER');
+      const config = JSON.parse(container.dataset.config);
+      container.textContent = '';
+      client.init({...config, el: container});
+    } catch {
+      container.textContent = '评论暂时无法加载，请刷新页面后重试。';
+    }
+  </script>`;
+}
+
+module.exports.renderWalineComments = renderWalineComments;

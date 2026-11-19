@@ -193,6 +193,7 @@ function decode(row) {
   const data = options.say || {};
   return {
     id: Number(row.id),
+    pathname: row.pathname,
     allowComments: Number(row.allow_comment) === 1,
     commentCount: Number(row.comment_num) || 0,
     kind: data.kind || 'text',

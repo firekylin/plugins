@@ -95,7 +95,7 @@ test('Webhook routes retain image and voice handling with no startup sockets', a
   }
   const routes = [], noop = () => {};
   const plugin = require('../plugin');
-  plugin.register({widgets: {Widget: class {}, register: noop}, templates: {registerFunction: noop},
+  plugin.register({widgets: {Widget: class {}, register: noop}, events: {on: noop}, templates: {registerFunction: noop},
     routes: {register: route => routes.push(route)}, admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
   assert.equal(plugin.activate, undefined);
   assert.ok(routes.some(route => route.path === '/qq' && route.method === 'POST' && route.csrf === false));

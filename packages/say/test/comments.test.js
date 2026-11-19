@@ -155,17 +155,27 @@ test('real host identity, input validation and moderation interoperate with Say'
 test('registered detail and comment routes respect visibility without changing native routes', async t => {
   const {SayService} = require('../lib/say-service');
   const routes = [];
+  const hooks = [];
   const noop = () => {};
   t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: false}));
   const get = t.mock.method(SayService.prototype, 'get', async() => ({id: 7, status: 'public', text: 'hello', tags: []}));
-  require('../plugin').register({widgets: {Widget: class {}, register: noop}, templates: {registerFunction: noop},
+  require('../plugin').register({widgets: {Widget: class {}, register: noop}, events: {on: (name, handler) => hooks.push({name, handler})}, templates: {registerFunction: noop},
     routes: {register: route => routes.push(route)}, admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
+  assert.equal(hooks.length, 1);
+  assert.equal(hooks[0].name, 'comment.beforeCreate');
+  assert.equal(typeof hooks[0].handler, 'function');
   assert.equal(routes.filter(route => route.path === '/comments/:id').length, 2);
   assert.ok(routes.every(route => !route.path.startsWith('/api/comment')));
   const detail = routes.find(route => route.path === '/says/:id');
   const request = {set() {}, throw(status) {throw Object.assign(new Error(), {status})}};
   await detail.handler({ctx: request, params: {id: '7'}, query: {}});
   assert.match(request.body, /评论已关闭/);
+  t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: true}));
+  get.mock.mockImplementation(async() => ({id: 7, pathname: 'example', status: 'public', allowComments: true, text: 'hello', tags: []}));
+  t.mock.method(SayComments.prototype, 'configuration', async() => ({options: {}, public: {}}));
+  await detail.handler({ctx: request, params: {id: '7'}, query: {}});
+  assert.match(request.body, /client.init/);
+  assert.doesNotMatch(request.body, /say-comment-form/);
   get.mock.mockImplementation(async() => ({id: 7, status: 'private'}));
   await assert.rejects(detail.handler({ctx: request, params: {id: '7'}, query: {}}), {status: 404});
 });
@@ -191,4 +201,39 @@ test('rejects simultaneous submissions and removes a comment when target closes 
   };
   await assert.rejects(other.comments.submit(7, body, other.request), {status: 404});
   assert.equal(other.rows.length, 0);
+});
+
+test('legacy lists include native and historical URLs by post ID without exposing pending comments', async() => {
+  const f = fixture();
+  f.rows.push(
+    {id: 1, post_id: 7, url: '/says/7', status: 'approved', comment: 'old'},
+    {id: 2, post_id: 7, url: '/path?pathname=example&type=3', status: 'approved', comment: 'native'},
+    {id: 3, post_id: 7, url: '/path?pathname=example&type=3', status: 'waiting', comment: 'pending'},
+    {id: 4, post_id: 8, url: '/says/8', status: 'approved', comment: 'other'}
+  );
+  const result = await f.comments.list(7);
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.items.map(item => item.comment), ['old', 'native']);
+});
+
+test('native comment filter retains Say switches and moderation without adding a public API', async() => {
+  const Module = require('node:module');
+  const original = Module._load;
+  const f = fixture();
+  let type = 3;
+  f.comments.getModel = name => name === 'post'
+    ? {where: () => ({field: () => ({find: async() => ({id: 7, type})})})} : f.getModel(name);
+  try {
+    Module._load = function(name, ...args) {
+      if (name === 'firekylin/src/service/comment') return {resolveCommentPostId: async() => 7};
+      return original.call(this, name, ...args);
+    };
+    const data = {url: '/says?pathname=example&type=3', status: 'approved'};
+    assert.equal((await f.comments.beforeNativeCreate(data)).status, 'waiting');
+    assert.equal((await f.comments.beforeNativeCreate({...data, status: 'spam'})).status, 'spam');
+    f.settings.commentsEnabled = false;
+    await assert.rejects(f.comments.beforeNativeCreate(data), {status: 403});
+    type = 0;
+    assert.equal(await f.comments.beforeNativeCreate(data), data);
+  } finally { Module._load = original; }
 });

@@ -19,7 +19,7 @@ function setup(t) {
     feishuAllowedOpenIds: 'ou_user', qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: '', qqAllowedOpenIds: ''};
   const load = t.mock.method(SayService.prototype, 'settings', async() => ({...settings}));
   plugin.register({logger: {info: noop}, widgets: {Widget: class {}, register: noop},
-    templates: {registerFunction: noop}, routes: {register: noop}, admin: {
+    events: {on: noop}, templates: {registerFunction: noop}, routes: {register: noop}, admin: {
       registerPanel: noop, registerPage: page => pages.push(page),
       registerForm: form => forms.push(form), registerAction: noop
     }});
