@@ -7,8 +7,7 @@ const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feish
 const feishuReply = require('./lib/feishu-reply');
 const feedback = require('./lib/publish-feedback');
 const {isWhoami, whoami} = require('./lib/commands');
-const {createQqGateway} = require('./lib/qq-gateway');
-let qqGateway;
+const {createQqWebhook} = require('./lib/qq-webhook');
 const {renderSayPage} = require('./lib/render');
 const {renderComments} = require('./lib/comment-render');
 const {SayComments} = require('./lib/comments');
@@ -380,7 +379,8 @@ module.exports = {
       getService: name => think.service(name)});
     ctx.routes.register({method: 'POST', path: '/frontend-publish', auth: 'admin', csrf: true,
       handler: async({ctx: request, body}) => publisher.submit(request, body)});
-    qqGateway = createQqGateway({service, mediaClient, logger: ctx.logger});
+    ctx.routes.register({method: 'POST', path: '/qq', csrf: false,
+      handler: createQqWebhook({service, mediaClient, logger: ctx.logger, getModel: name => think.model(name)})});
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
         const result = await service.list({publicOnly: true, page: this.parameter.page,
@@ -560,10 +560,10 @@ module.exports = {
       {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
         description: '向公众号发送 /whoami 获取；每行或逗号分隔一个 OpenID，未列出的关注者不能发布碎语。'},
       {name: 'qqEnabled', type: 'switch', label: '启用 QQ 私聊发布',
-        description: '官方机器人 WebSocket；需要单进程常驻部署。白名单为空时只可使用 /whoami，不允许发布。'},
-      {name: 'qqSandbox', type: 'switch', label: 'QQ 沙箱环境', description: '测试机器人启用；正式环境按开放平台要求配置出口 IP 白名单。'},
+        description: '官方机器人 Webhook；回调地址 /api/plugins/say/qq，适用于 Vercel。白名单为空时只可使用 /whoami，不允许发布。'},
+      {name: 'qqSandbox', type: 'switch', label: 'QQ 沙箱环境', description: '测试机器人启用；IP 白名单可选，配置后需匹配实际出口 IP。'},
       {name: 'qqAppId', type: 'text', label: 'QQ 机器人 AppID'},
-      {name: 'qqAppSecret', type: 'password', label: 'QQ 机器人 AppSecret', description: '留空保留原值；关闭 QQ 开关即可停止连接。'},
+      {name: 'qqAppSecret', type: 'password', label: 'QQ 机器人 AppSecret', description: '留空保留原值；关闭 QQ 开关即可停止接收回调。'},
       {name: 'qqAllowedOpenIds', type: 'textarea', label: 'QQ 允许发布的 OpenID',
         description: '向机器人私聊 /whoami 获取，每行一个；不是数字 QQ 号。仅授权可信发布者，消息会公开发布。'},
       {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
@@ -577,10 +577,7 @@ module.exports = {
         description: '向机器人发送 /whoami 获取；每行或逗号分隔一个 ou_ 开头的 OpenID，白名单为空时不能发布。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values);
-      await qqGateway?.refresh();
       return {message: '全部设置已保存。'};
     }});
-  },
-  activate() { qqGateway?.start() },
-  async deactivate() { await qqGateway?.stop() }
+  }
 };
