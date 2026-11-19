@@ -23,11 +23,20 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true,
     const identity = !message.attachments?.length && whoami('qq', text, openId);
     if (!identity && !strings(settings.qqAllowedOpenIds).includes(openId)) { diagnostic('IGNORED_NOT_ALLOWLISTED'); return }
     const ext = message.message_scene?.ext;
-    const index = (Array.isArray(ext) ? ext.find(value => typeof value === 'string' && value.startsWith('msg_idx='))?.slice(8)
+    let index = (Array.isArray(ext) ? ext.find(value => typeof value === 'string' && value.startsWith('msg_idx='))?.slice(8)
       : ext?.msg_idx) ?? message.msg_seq ?? '';
-    const replySequence = index === '' ? 1 : 1 + (createHash('sha256').update(String(index)).digest().readUInt32BE(0) % 2147483646);
-    if (!['string', 'number'].includes(typeof index) || String(index).length > 128) { diagnostic('IGNORED_MESSAGE_INDEX'); return }
-    const key = JSON.stringify([connection.qqAppId, !!connection.qqSandbox, openId, message.id, index]);
+    if (typeof index !== 'string' && !(typeof index === 'number' && Number.isFinite(index))) {
+      // The index is optional; retain message-ID deduplication if its shape is unknown.
+      diagnostic('MESSAGE_INDEX_FALLBACK');
+      index = '';
+    }
+    const digest = createHash('sha256').update(String(index)).digest();
+    const replySequence = index === '' ? 1 : 1 + (digest.readUInt32BE(0) % 2147483646);
+    // Long opaque platform indexes are valid identifiers, not user-visible text.
+    // Keep the complete identifier's digest instead of rejecting or truncating it.
+    const receiptIndex = String(index).length > 128 ? ['sha256', digest.toString('hex')] : index;
+    if (Array.isArray(receiptIndex)) diagnostic('MESSAGE_INDEX_HASHED');
+    const key = JSON.stringify([connection.qqAppId, !!connection.qqSandbox, openId, message.id, receiptIndex]);
     if (pending.has(key)) { diagnostic('DUPLICATE_IN_FLIGHT'); return pending.get(key) }
     if (pending.size >= 32) throw Object.assign(new Error('QQ busy'), {code: 'QQ_BUSY'}); // Bound active downloads and writes under an event flood.
     const operation = (async() => {
