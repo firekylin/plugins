@@ -2,6 +2,7 @@
 
 const MAX_BYTES = 20 * 1024 * 1024;
 const API = 'https://api.bot.qq.com';
+const TOKEN_URL = 'https://bots.qq.com/app/getAppAccessToken';
 const SANDBOX = 'https://sandbox.api.sgroup.qq.com';
 
 function qqError(code = 'QQ_API_FAILED', status) {
@@ -53,7 +54,7 @@ function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now} = {}) 
   async function token() {
     if (cached && cached.expires > now() + 60000) return cached.value;
     if (!tokenPending) tokenPending = (async() => {
-      const data = await json(`${API}/app/getAppAccessToken`, {method: 'POST',
+      const data = await json(TOKEN_URL, {method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({appId: settings.qqAppId, clientSecret: settings.qqAppSecret})});
       if (typeof data.access_token !== 'string' || !data.access_token || !(Number(data.expires_in) > 0)) {
