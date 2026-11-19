@@ -8,6 +8,7 @@ const KINDS = new Set(['text', 'image', 'textpic', 'voice', 'location', 'link', 
 const STATUSES = new Set(['public', 'private', 'hidden']);
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
+  commentsEnabled: false,
   pageSize: 10,
   apiKey: '',
   authorId: 1,
@@ -71,6 +72,7 @@ function normalizeSettings(value = {}, previous = {}) {
       ? value.qqAppSecret.trim().slice(0, 256) : prior.qqAppSecret,
     qqAllowedOpenIds: typeof value.qqAllowedOpenIds === 'string'
       ? [...new Set(strings(value.qqAllowedOpenIds))].join('\n') : prior.qqAllowedOpenIds,
+    commentsEnabled: typeof value.commentsEnabled === 'boolean' ? value.commentsEnabled : prior.commentsEnabled,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,
@@ -137,7 +139,7 @@ function normalize(input = {}) {
   if (!KINDS.has(kind)) throw Object.assign(new Error('Invalid say kind'), {status: 400});
   if (!STATUSES.has(status)) throw Object.assign(new Error('Invalid say status'), {status: 400});
   const text = String(input.text || '').trim().slice(0, 20000);
-  const data = {kind, status, text, tags: tags(input.tags, text), source: String(input.source || 'Firekylin').slice(0, 80)};
+  const data = {kind, status, allowComments: input.allowComments === true, text, tags: tags(input.tags, text), source: String(input.source || 'Firekylin').slice(0, 80)};
   if (['image', 'textpic'].includes(kind)) {
     data.images = strings(input.images).slice(0, 20).map((item, index) => safeUrl(item, `Image ${index + 1}`));
     if (!data.images.length) throw Object.assign(new Error('At least one image URL is required'), {status: 400});
@@ -191,6 +193,8 @@ function decode(row) {
   const data = options.say || {};
   return {
     id: Number(row.id),
+    allowComments: Number(row.allow_comment) === 1,
+    commentCount: Number(row.comment_num) || 0,
     kind: data.kind || 'text',
     status: displayStatus(row),
     text: data.text || row.markdown_content || '',
@@ -280,7 +284,7 @@ class SayService {
       summary: data.text.slice(0, 200),
       markdown_content: data.text,
       content: data.text,
-      allow_comment: 0,
+      allow_comment: data.allowComments ? 1 : 0,
       create_time: now,
       update_time: now,
       comment_num: 0,
@@ -302,7 +306,7 @@ class SayService {
     const current = await this.get(id);
     const data = normalize({...current, ...input});
     const visibility = databaseStatus(data.status);
-    await this.model().savePost({id: current.id, ...visibility, title: data.kind,
+    await this.model().savePost({id: current.id, ...visibility, allow_comment: data.allowComments ? 1 : 0, title: data.kind,
       summary: data.text.slice(0, 200), markdown_content: data.text, content: data.text,
       update_time: this.now(), options: JSON.stringify({say: data})});
     return this.get(current.id);
@@ -344,10 +348,18 @@ class SayService {
     return this.model().where({type: SAY_TYPE, id: ['IN', normalizedIds]}).update(databaseStatus(status));
   }
 
+  async assertNoComments(ids) {
+    if (!ids.length) return;
+    if (Number(await this.getModel('comment').where({post_id: ['IN', ids]}).count())) {
+      throw Object.assign(new Error('请先在评论管理中删除关联评论，或将碎语设为私密；有评论的碎语不能删除或合并。'), {status: 409});
+    }
+  }
+
   async remove(ids) {
     const normalizedIds = strings(ids).map(Number).filter(Number.isSafeInteger);
     if (!normalizedIds.length) throw Object.assign(new Error('At least one say ID is required'), {status: 400});
     const rows = await this.model().setRelation(false).where({type: SAY_TYPE, id: ['IN', normalizedIds]}).select();
+    await this.assertNoComments(rows.map(row => row.id));
     let deleted = 0;
     for (const row of rows) deleted += Number(await this.model().deletePost(row.id) || 0);
     return deleted;
@@ -359,10 +371,11 @@ class SayService {
     const rows = await this.model().setRelation(false).where({type: SAY_TYPE, id: ['IN', normalizedIds]})
       .order('create_time ASC').select();
     if (rows.length !== normalizedIds.length) throw Object.assign(new Error('One or more says were not found'), {status: 404});
+    await this.assertNoComments(normalizedIds);
     const merged = mergeData(rows.map(decode));
     const keep = rows[0];
     const visibility = databaseStatus(merged.status);
-    await this.model().savePost({id: keep.id, ...visibility, title: merged.kind, summary: merged.text.slice(0, 200),
+    await this.model().savePost({id: keep.id, ...visibility, allow_comment: merged.allowComments ? 1 : 0, title: merged.kind, summary: merged.text.slice(0, 200),
       markdown_content: merged.text, content: merged.text, options: JSON.stringify({say: merged})});
     for (const row of rows.slice(1)) await this.model().deletePost(row.id);
     return {...merged, id: Number(keep.id), createdAt: keep.create_time};

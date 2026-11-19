@@ -10,6 +10,8 @@ const {isWhoami, whoami} = require('./lib/commands');
 const {createQqGateway} = require('./lib/qq-gateway');
 let qqGateway;
 const {renderSayPage} = require('./lib/render');
+const {renderComments} = require('./lib/comment-render');
+const {SayComments} = require('./lib/comments');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
   createMediaClient} = require('./lib/media');
@@ -31,6 +33,7 @@ const statusOptions = [
 const publishFields = [
   {name: 'kind', type: 'radio', label: '类型', required: true, options: kindOptions},
   {name: 'status', type: 'radio', label: '状态', required: true, options: statusOptions},
+  {name: 'allowComments', type: 'switch', label: '允许评论', description: '还需在碎语设置中启用评论；提交后须后台审核。'},
   {name: 'text', type: 'code', label: '内容', description: '文本类型必填；其他类型可作为附言。使用 #标签 可自动提取标签。'},
   {name: 'tags', type: 'text', label: '标签', description: '可选，使用逗号分隔。'},
   {name: 'images', type: 'code', label: '图片 URL', required: true, visibleWhen: {field: 'kind', values: ['image', 'textpic']},
@@ -50,11 +53,12 @@ const publishFields = [
 ];
 const textPublishFields = [
   {name: 'status', type: 'radio', label: '状态', required: true, options: statusOptions},
+  {name: 'allowComments', type: 'switch', label: '允许评论', description: '还需在碎语设置中启用评论；提交后须后台审核。'},
   {name: 'text', type: 'code', label: '内容', required: true, description: '使用 #标签 可自动提取标签。'}
 ];
 
 function defaultPublish() {
-  return {kind: 'text', status: 'public', text: '', tags: '', images: '', mediaUrl: '', latitude: '',
+  return {kind: 'text', status: 'public', allowComments: false, text: '', tags: '', images: '', mediaUrl: '', latitude: '',
     longitude: '', label: '', url: '', title: '', description: '', artist: '', cover: ''};
 }
 
@@ -369,6 +373,8 @@ module.exports = {
     const mediaClient = createMediaClient(ctx.media);
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
     pluginLogger = ctx.logger;
+    const comments = new SayComments({say: service, getModel: name => think.model(name),
+      getService: name => think.service(name), now: value => think.datetime(value), logger: ctx.logger});
     qqGateway = createQqGateway({service, mediaClient, logger: ctx.logger});
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
@@ -417,6 +423,28 @@ module.exports = {
       handler: async({ctx: request, query}) => renderPage(request, query, String(query.tag || ''))});
     ctx.routes.register({method: 'GET', path: '/says/tag/:tag', scope: 'site', csrf: false,
       handler: async({ctx: request, query, params}) => renderPage(request, query, params.tag)});
+
+    ctx.routes.register({method: 'GET', path: '/comments/:id', csrf: false,
+      handler: async({ctx: request, params, query}) => comments.handle(() => comments.list(params.id, query.page), request)});
+    ctx.routes.register({method: 'POST', path: '/comments/:id', csrf: false,
+      handler: async({ctx: request, params, body}) => comments.handle(() => comments.submit(params.id, body, request), request)});
+    ctx.routes.register({method: 'GET', path: '/says/:id', scope: 'site', csrf: false,
+      handler: async({ctx: request, params, query}) => {
+        if (!/^[1-9]\d{0,14}$/.test(params.id)) return request.throw(404);
+        const settings = await service.settings();
+        const item = await service.get(params.id);
+        if (!settings.enabled || item.status !== 'public') return request.throw(404);
+        let section = '<p>评论已关闭。</p>';
+        if (settings.commentsEnabled && item.allowComments) {
+          const listed = await comments.list(item.id, query.page);
+          const config = await comments.configuration();
+          section = renderComments(item.id, listed, config.public);
+        }
+        request.type = 'text/html';
+        request.set('Cache-Control', 'no-store');
+        request.body = renderSayPage({items: [item], page: 1, pageSize: 1, total: 1},
+          {title: `碎语 #${item.id}`, amapKey: settings.amapKey, section});
+      }});
 
     ctx.admin.registerPanel({id: 'say', title: '微博列表', icon: 'comment', order: 74});
     ctx.admin.registerPage({
@@ -475,7 +503,7 @@ module.exports = {
     });
 
     ctx.admin.registerForm({id: 'publish-say', page: 'publish', title: '碎语内容', submitLabel: '发布', fields: textPublishFields,
-      load: async() => ({status: 'public', text: ''}), submit: async(values, context) => {
+      load: async() => ({status: 'public', allowComments: false, text: ''}), submit: async(values, context) => {
         return feedback.adminResult(() => service.create({...values, kind: 'text'}, context.user.id),
           'publish', pluginLogger);
       }});
@@ -504,6 +532,7 @@ module.exports = {
     ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '碎语设置',
       submitLabel: '保存全部设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
+      {name: 'commentsEnabled', type: 'switch', label: '启用碎语评论', description: '默认关闭；同时开启单条碎语的允许评论后生效。所有评论须在后台评论管理中审核。'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
         description: '外部 API、企业微信、微信公众号、飞书和 QQ 发布的碎语都会归属到这个用户。'},
