@@ -6,6 +6,8 @@ const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feish
   verify: verifyFeishu} = require('./lib/feishu');
 const feishuReply = require('./lib/feishu-reply');
 const feedback = require('./lib/publish-feedback');
+const {createQqGateway} = require('./lib/qq-gateway');
+let qqGateway;
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
@@ -355,6 +357,7 @@ module.exports = {
     const mediaClient = createMediaClient(ctx.media);
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
     pluginLogger = ctx.logger;
+    qqGateway = createQqGateway({service, mediaClient, logger: ctx.logger});
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
         const result = await service.list({publicOnly: true, page: this.parameter.page,
@@ -491,7 +494,7 @@ module.exports = {
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
-        description: '外部 API、企业微信、微信公众号和飞书发布的碎语都会归属到这个用户。'},
+        description: '外部 API、企业微信、微信公众号、飞书和 QQ 发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'},
       {name: 'apiKey', type: 'password', label: '外部发布 API Key',
         description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'},
@@ -507,6 +510,13 @@ module.exports = {
         description: '服务器配置需要选择安全模式；留空会保留原值。'},
       {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
         description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'},
+      {name: 'qqEnabled', type: 'switch', label: '启用 QQ 私聊发布',
+        description: '官方机器人 WebSocket；需要单进程常驻部署。白名单为空时只可使用 /whoami，不允许发布。'},
+      {name: 'qqSandbox', type: 'switch', label: 'QQ 沙箱环境', description: '测试机器人启用；正式环境按开放平台要求配置出口 IP 白名单。'},
+      {name: 'qqAppId', type: 'text', label: 'QQ 机器人 AppID'},
+      {name: 'qqAppSecret', type: 'password', label: 'QQ 机器人 AppSecret', description: '留空保留原值；关闭 QQ 开关即可停止连接。'},
+      {name: 'qqAllowedOpenIds', type: 'textarea', label: 'QQ 允许发布的 OpenID',
+        description: '向机器人私聊 /whoami 获取，每行一个；不是数字 QQ 号。仅授权可信发布者，消息会公开发布。'},
       {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
       {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
         description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
@@ -518,7 +528,10 @@ module.exports = {
         description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values);
+      await qqGateway?.refresh();
       return {message: '全部设置已保存。'};
     }});
-  }
+  },
+  activate() { qqGateway?.start() },
+  async deactivate() { await qqGateway?.stop() }
 };

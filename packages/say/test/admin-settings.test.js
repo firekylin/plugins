@@ -16,7 +16,7 @@ function setup(t) {
     wechatEncodingAESKey: 'b'.repeat(43), wechatAllowedOpenIds: 'wx_user',
     feishuAppId: 'cli_app', feishuAppSecret: 'private-feishu-secret',
     feishuVerificationToken: 'private-feishu-token', feishuEncryptKey: 'private-feishu-key',
-    feishuAllowedOpenIds: 'ou_user'};
+    feishuAllowedOpenIds: 'ou_user', qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: '', qqAllowedOpenIds: ''};
   const load = t.mock.method(SayService.prototype, 'settings', async() => ({...settings}));
   plugin.register({logger: {info: noop}, widgets: {Widget: class {}, register: noop},
     templates: {registerFunction: noop}, routes: {register: noop}, admin: {

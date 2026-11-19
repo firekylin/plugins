@@ -39,7 +39,11 @@ function diagnostic(error, fallback = 'process') {
     ? `（飞书错误码 ${cause.feishuCode}）`
     : Number.isInteger(cause?.httpStatus) && cause.httpStatus >= 400 && cause.httpStatus <= 599
       ? `（HTTP ${cause.httpStatus}）` : '';
-  const systemHints = {MEDIA_TYPE_UNSUPPORTED: '平台返回的附件类型暂不支持，请根据参考编号查看文件类型诊断。',
+  const systemHints = {QQ_PUBLISH_DENIED: 'QQ 发布已关闭或发布者授权已变更。',
+    QQ_MEDIA_URL_DENIED: '附件下载地址不属于支持的 QQ 媒体服务。',
+    QQ_API_FAILED: 'QQ 接口调用失败，请检查机器人权限、沙箱模式和出口 IP 白名单。',
+    QQ_DOWNLOAD_FAILED: 'QQ 附件下载失败，请检查附件有效期与网络。',
+    MEDIA_TYPE_UNSUPPORTED: '平台返回的附件类型暂不支持，请根据参考编号查看文件类型诊断。',
     MEDIA_TYPE_MISMATCH: '附件内容无法识别或与声明的类型不一致，请根据参考编号查看格式诊断。',
     MEDIA_SIZE_INVALID: '附件为空或超过 20 MB，请检查文件大小。',
     PLUGIN_MEDIA_DENIED: '插件媒体权限不足或插件已停用，请检查插件状态及授权。',
@@ -71,7 +75,8 @@ function diagnostic(error, fallback = 'process') {
 const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'TimeoutError',
   'AbortError', 'AggregateError', 'DatabaseError', 'QueryFailedError', 'SequelizeDatabaseError',
   'SequelizeConnectionError', 'SequelizeValidationError', 'AxiosError', 'FetchError']);
-const errorCodes = new Set(['MEDIA_TYPE_UNSUPPORTED', 'MEDIA_TYPE_MISMATCH', 'MEDIA_SIZE_INVALID',
+const errorCodes = new Set(['QQ_PUBLISH_DENIED', 'QQ_MEDIA_URL_DENIED', 'QQ_API_FAILED',
+  'QQ_DOWNLOAD_FAILED', 'QQ_TOKEN_INVALID', 'QQ_GATEWAY_DENIED', 'MEDIA_TYPE_UNSUPPORTED', 'MEDIA_TYPE_MISMATCH', 'MEDIA_SIZE_INVALID',
   'MEDIA_REGISTRATION_FAILED', 'PLUGIN_MEDIA_DENIED', 'MEDIA_OWNER_DENIED',
   'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
   'EPIPE', 'EACCES', 'ENOSPC', 'ENOENT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
@@ -105,6 +110,7 @@ function logDetails(error, fallback = 'process') {
       };
       if (Number.isSafeInteger(media.bytes) && media.bytes >= 0) detail.media.bytes = media.bytes;
     }
+    if (Number.isSafeInteger(cause.qqCode)) detail.qqCode = cause.qqCode;
     if (Number.isSafeInteger(cause.feishuCode)) detail.feishuCode = cause.feishuCode;
     // Common fetch, Axios and AWS SDK status fields. No response bodies are read.
     const status = [cause.httpStatus, cause.status, cause.statusCode,

@@ -25,7 +25,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   feishuAppSecret: '',
   feishuVerificationToken: '',
   feishuEncryptKey: '',
-  feishuAllowedOpenIds: ''
+  feishuAllowedOpenIds: '',
+  qqEnabled: false,
+  qqSandbox: true,
+  qqAppId: '',
+  qqAppSecret: '',
+  qqAllowedOpenIds: ''
 });
 
 function parse(value, fallback = {}) {
@@ -52,7 +57,20 @@ function normalizeSettings(value = {}, previous = {}) {
       !/^[A-Za-z0-9+/]{43}$/.test(value.wechatEncodingAESKey)) {
     throw Object.assign(new Error('WeChat EncodingAESKey must be 43 characters'), {status: 400});
   }
+  for (const key of ['qqAppId', 'qqAllowedOpenIds']) {
+    const ids = key === 'qqAppId' ? [value[key]?.trim?.()].filter(Boolean) : strings(value[key]);
+    if (typeof value[key] === 'string' && ids.some(id => !/^[A-Za-z0-9_-]{1,128}$/.test(id))) {
+      throw Object.assign(new Error('Invalid QQ AppID or OpenID'), {status: 400});
+    }
+  }
   return {
+    qqEnabled: typeof value.qqEnabled === 'boolean' ? value.qqEnabled : prior.qqEnabled,
+    qqSandbox: typeof value.qqSandbox === 'boolean' ? value.qqSandbox : prior.qqSandbox,
+    qqAppId: typeof value.qqAppId === 'string' ? value.qqAppId.trim().slice(0, 128) : prior.qqAppId,
+    qqAppSecret: typeof value.qqAppSecret === 'string' && value.qqAppSecret.trim()
+      ? value.qqAppSecret.trim().slice(0, 256) : prior.qqAppSecret,
+    qqAllowedOpenIds: typeof value.qqAllowedOpenIds === 'string'
+      ? [...new Set(strings(value.qqAllowedOpenIds))].join('\n') : prior.qqAllowedOpenIds,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,

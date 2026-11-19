@@ -7,7 +7,7 @@ const wechatTokens = new Map();
 const feishuTokens = new Map();
 const ALLOWED = new Map([
   ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/gif', '.gif'], ['image/webp', '.webp'],
-  ['audio/mpeg', '.mp3'], ['audio/amr', '.amr'], ['audio/amr-wb', '.amr'], ['audio/ogg', '.ogg'],
+  ['audio/wav', '.wav'], ['audio/mpeg', '.mp3'], ['audio/amr', '.amr'], ['audio/amr-wb', '.amr'], ['audio/ogg', '.ogg'],
   ['application/octet-stream', '']
 ]);
 
@@ -16,7 +16,32 @@ function cleanName(value, fallback = 'say-media') {
   return name || fallback;
 }
 
+// QQ exposes a converted WAV URL for SILK voice messages. Accept complete PCM/float WAVE only.
+function isWave(buffer) {
+  if (buffer.length < 44 || buffer.subarray(0, 4).toString() !== 'RIFF' ||
+      buffer.subarray(8, 12).toString() !== 'WAVE' || buffer.readUInt32LE(4) + 8 !== buffer.length) return false;
+  let format = false;
+  let audio = false;
+  let offset = 12;
+  for (; offset + 8 <= buffer.length;) {
+    const tag = buffer.subarray(offset, offset + 4).toString();
+    const size = buffer.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    if (start + size > buffer.length) return false;
+    if (tag === 'fmt ') {
+      if (size < 16 || ![1, 3].includes(buffer.readUInt16LE(start)) ||
+          !buffer.readUInt16LE(start + 2) || !buffer.readUInt32LE(start + 4) ||
+          !buffer.readUInt16LE(start + 12) || !buffer.readUInt16LE(start + 14)) return false;
+      format = true;
+    }
+    if (tag === 'data' && size > 0) audio = true;
+    offset = start + size + (size % 2);
+  }
+  return format && audio && offset === buffer.length;
+}
+
 function detectedType(buffer) {
+  if (isWave(buffer)) return 'audio/wav';
   if (buffer.length >= 3 && buffer.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))) return 'image/jpeg';
   if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) return 'image/png';
   if (buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString())) return 'image/gif';
@@ -89,7 +114,7 @@ async function uploadBuffer(buffer, {filename, mime, userId}, dependencies = {})
   }
   mime = String(mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
   mime = ({'audio/opus': 'audio/ogg', 'application/ogg': 'audio/ogg',
-    'audio/x-ogg': 'audio/ogg', 'audio/mp3': 'audio/mpeg', 'audio/x-amr': 'audio/amr'})[mime] || mime;
+    'audio/x-ogg': 'audio/ogg', 'audio/mp3': 'audio/mpeg', 'audio/x-amr': 'audio/amr', 'audio/x-wav': 'audio/wav'})[mime] || mime;
   if (!ALLOWED.has(mime) && isOggAudio(buffer)) mime = 'audio/ogg';
   if (!ALLOWED.has(mime)) {
     throw validationError('Unsupported media type', 'MEDIA_TYPE_UNSUPPORTED', buffer, mime);
@@ -97,7 +122,7 @@ async function uploadBuffer(buffer, {filename, mime, userId}, dependencies = {})
   const detected = detectedType(buffer);
   const extensionType = new Map([['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.png', 'image/png'],
     ['.gif', 'image/gif'], ['.webp', 'image/webp'], ['.mp3', 'audio/mpeg'], ['.amr', 'audio/amr'],
-    ['.ogg', 'audio/ogg'], ['.opus', 'audio/ogg']])
+    ['.ogg', 'audio/ogg'], ['.opus', 'audio/ogg'], ['.wav', 'audio/wav']])
     .get(path.extname(String(filename || '')).toLowerCase());
   if (!detected || (mime !== 'application/octet-stream' && detected !== mime) ||
       (mime === 'application/octet-stream' && extensionType && !detected.startsWith(extensionType.split('/')[0] + '/'))) {
