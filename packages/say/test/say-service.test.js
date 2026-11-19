@@ -84,7 +84,8 @@ test('normalizes content, tags, URLs and settings', () => {
     {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
       wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: '', feishuAppId: '',
-      feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '', feishuAllowedOpenIds: ''});
+      feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '', feishuAllowedOpenIds: '',
+      qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: '', qqAllowedOpenIds: ''});
   assert.equal(normalizeSettings({authorId: 2}, {enabled: false}).enabled, false);
   assert.equal(normalizeSettings({wechatAllowedOpenIds: 'one\ntwo,one'}).wechatAllowedOpenIds, 'one\ntwo');
   assert.equal(normalizeSettings({feishuAllowedOpenIds: 'ou_one, ou_two'}).feishuAllowedOpenIds, 'ou_one\nou_two');

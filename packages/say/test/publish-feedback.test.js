@@ -20,19 +20,19 @@ function setup(t) {
   plugin.register({logger: {info: noop, error: noop}, widgets: {Widget: class {}, register: noop},
     templates: {registerFunction: noop}, routes: {register: route => routes.push(route)},
     admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
-  return {create, async call(channel, content = 'hello') {
+  return {create, async call(channel, content = 'hello', {sender = 'publisher', invalidSignature = false} = {}) {
     const ctx = {method: 'POST', request: {}, set: noop, get: () => 'valid-key',
       throw(status, message) {
         throw Object.assign(new Error(message), {status});
       }};
     const route = routes.find(route => route.path === `/${channel}` && route.method !== 'OPTIONS');
     if (channel === 'publish') return {result: await route.handler({ctx, body: {text: content}}), ctx};
-    const xml = `<xml><ToUserName>corp</ToUserName><FromUserName>publisher</FromUserName><MsgType>text</MsgType><Content>${content}</Content><MsgId>1</MsgId></xml>`;
+    const xml = `<xml><ToUserName>corp</ToUserName><FromUserName>${sender}</FromUserName><MsgType>text</MsgType><Content>${content}</Content><MsgId>1</MsgId></xml>`;
     const encrypted = encrypt(xml, key, 'corp');
     const body = `<xml><Encrypt>${encrypted}</Encrypt></xml>`;
     ctx.request.rawBody = body;
     const result = await route.handler({ctx, body, query: {timestamp: '1', nonce: 'nonce',
-      msg_signature: signature('token', '1', 'nonce', encrypted)}});
+      msg_signature: invalidSignature ? 'invalid' : signature('token', '1', 'nonce', encrypted)}});
     return {result: xmlValue(decrypt(xmlValue(result, 'Encrypt'), key, 'corp'), 'Content'), ctx};
   }};
 }
@@ -74,4 +74,29 @@ test('admin publishing uses the shared result and sanitizes errors', async() => 
     assert.doesNotMatch(error.message, /private|SQL|password/);
     return true;
   });
+});
+
+for (const channel of ['wecom', 'wechat']) {
+  test(`${channel} whoami returns authenticated sender identity without publishing or allowlisting`, async t => {
+    const {create, call} = setup(t);
+    const merge = t.mock.method(SayService.prototype, 'merge', async() => { throw new Error('must not merge') });
+    const result = await call(channel, ' /whoami ', {sender: 'not_allowlisted'});
+    assert.match(result.result, /not_allowlisted/);
+    assert.match(result.result, channel === 'wecom' ? /企业微信 UserID/ : /微信公众号 OpenID/);
+    assert.equal(create.mock.callCount(), 0);
+    assert.equal(merge.mock.callCount(), 0);
+    await assert.rejects(call(channel, '/whoami', {invalidSignature: true}), {status: 401});
+    assert.equal(create.mock.callCount(), 0);
+    if (channel === 'wechat') {
+      assert.match((await call(channel, 'ordinary text', {sender: 'not_allowlisted'})).result, /没有发布碎语的权限/);
+      assert.equal(create.mock.callCount(), 0);
+    }
+  });
+}
+
+test('JSON API treats whoami as content, not a chat identity command', async t => {
+  const {create, call} = setup(t);
+  await call('publish', '/whoami');
+  assert.equal(create.mock.callCount(), 1);
+  assert.equal(create.mock.calls[0].arguments[0].text, '/whoami');
 });

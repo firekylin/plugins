@@ -6,6 +6,9 @@ const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feish
   verify: verifyFeishu} = require('./lib/feishu');
 const feishuReply = require('./lib/feishu-reply');
 const feedback = require('./lib/publish-feedback');
+const {isWhoami, whoami} = require('./lib/commands');
+const {createQqGateway} = require('./lib/qq-gateway');
+let qqGateway;
 const {renderSayPage} = require('./lib/render');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
@@ -98,6 +101,8 @@ function replaceEmoji(value) {
 }
 
 async function fromWecom(message, settings, mediaClient) {
+  const identity = message.MsgType.toLowerCase() === 'text' && whoami('wecom', message.Content, message.FromUserName);
+  if (identity) return identity;
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = replaceEmoji(message.Content).trim();
@@ -155,6 +160,8 @@ function wechatReply(message, content, settings) {
 }
 
 async function fromWechat(message, settings, mediaClient) {
+  const identity = message.MsgType.toLowerCase() === 'text' && whoami('wechat', message.Content, message.FromUserName);
+  if (identity) return identity;
   const allowed = new Set(strings(settings.wechatAllowedOpenIds));
   if (!allowed.has(message.FromUserName)) {
     pluginLogger?.info?.(`say: rejected WeChat publisher OpenID ${message.FromUserName}`);
@@ -230,7 +237,16 @@ function rawJsonRequestBody(request, body) {
   return JSON.stringify(body || {});
 }
 
+function feishuText(message) {
+  if (message.messageType !== 'text') return '';
+  let text = String(message.content.text || '');
+  for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
+  return text.trim();
+}
+
 async function fromFeishu(message, settings, mediaClient) {
+  const identity = whoami('feishu', feishuText(message), message.openId);
+  if (identity) return identity;
   const allowed = new Set(strings(settings.feishuAllowedOpenIds));
   if (!allowed.has(message.openId)) {
     pluginLogger?.info?.(`say: rejected Feishu publisher OpenID ${message.openId}`);
@@ -240,9 +256,7 @@ async function fromFeishu(message, settings, mediaClient) {
   const save = async input => ({item: await feedback.step('save',
     () => service.create(input, settings.authorId)), action: 'publish'});
   if (message.messageType === 'text') {
-    let text = String(message.content.text || '');
-    for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
-    text = text.trim();
+    const text = feishuText(message);
     if (!text) return;
     if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
@@ -310,7 +324,7 @@ async function feishuCallback({ctx: request, body}, mediaClient) {
     return request.throw(401, 'Invalid Feishu app ID');
   }
   const message = feishuMessageEvent(payload);
-  if (!message || !strings(settings.feishuAllowedOpenIds).includes(message.openId)) return {};
+  if (!message || (!isWhoami(feishuText(message)) && !strings(settings.feishuAllowedOpenIds).includes(message.openId))) return {};
   if (!/^om_[A-Za-z0-9_-]{1,256}$/.test(message.messageId)) return {};
   const eventKey = `${settings.feishuAppId}:${message.eventId || message.messageId}`;
   let receipt = feishuEvents.get(eventKey);
@@ -355,6 +369,7 @@ module.exports = {
     const mediaClient = createMediaClient(ctx.media);
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
     pluginLogger = ctx.logger;
+    qqGateway = createQqGateway({service, mediaClient, logger: ctx.logger});
     class SayWidget extends ctx.widgets.Widget {
       async execute() {
         const result = await service.list({publicOnly: true, page: this.parameter.page,
@@ -403,14 +418,14 @@ module.exports = {
     ctx.routes.register({method: 'GET', path: '/says/tag/:tag', scope: 'site', csrf: false,
       handler: async({ctx: request, query, params}) => renderPage(request, query, params.tag)});
 
-    ctx.admin.registerPanel({id: 'say', title: '碎语', icon: 'comment', order: 74});
+    ctx.admin.registerPanel({id: 'say', title: '微博列表', icon: 'comment', order: 74});
     ctx.admin.registerPage({
-      id: 'manage', panel: 'say', title: '碎语管理', description: '发布和管理轻量微博内容。',
+      id: 'manage', panel: 'say', title: '微博列表', description: '发布和管理轻量微博内容。',
       load: async() => {
         const items = await service.all();
         return {sections: [
           {type: 'actions', ids: []},
-          {type: 'table', title: `碎语列表（共 ${items.length} 条）`, rowKey: 'id', pagination: true,
+          {type: 'table', title: `微博列表（共 ${items.length} 条）`, rowKey: 'id', pagination: true,
             search: {keys: ['content', 'tags'], placeholder: '搜索碎语'},
             selection: {input: 'ids', actions: [
               {key: 'public', label: '标记为公开', action: 'bulk-status', input: {status: 'public'}},
@@ -443,7 +458,7 @@ module.exports = {
       description: '修改单条碎语的内容与状态。',
       load: async() => ({sections: [{type: 'form', id: 'edit-say'}]})});
     ctx.admin.registerPage({
-      id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
+      id: 'settings', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
       load: async() => ({sections: [
         {type: 'markdown', title: '发布方式配置', content:
           '外部 API、企业微信、微信公众号和飞书可以同时配置和使用，彼此不互斥。按需填写所需方式的配置即可，无需全部配置；完成后点击“保存全部设置”统一保存。'},
@@ -491,7 +506,7 @@ module.exports = {
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
-        description: '外部 API、企业微信、微信公众号和飞书发布的碎语都会归属到这个用户。'},
+        description: '外部 API、企业微信、微信公众号、飞书和 QQ 发布的碎语都会归属到这个用户。'},
       {name: 'amapKey', type: 'password', label: '高德地图 Web 服务 Key', description: '可选，用于在位置碎语中显示静态地图；留空仅显示位置文字。'},
       {name: 'apiKey', type: 'password', label: '外部发布 API Key',
         description: '留空会保留现有密钥。建议使用至少 32 位随机字符串。'},
@@ -506,7 +521,14 @@ module.exports = {
       {name: 'wechatEncodingAESKey', type: 'password', label: '公众号 EncodingAESKey',
         description: '服务器配置需要选择安全模式；留空会保留原值。'},
       {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
-        description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'},
+        description: '向公众号发送 /whoami 获取；每行或逗号分隔一个 OpenID，未列出的关注者不能发布碎语。'},
+      {name: 'qqEnabled', type: 'switch', label: '启用 QQ 私聊发布',
+        description: '官方机器人 WebSocket；需要单进程常驻部署。白名单为空时只可使用 /whoami，不允许发布。'},
+      {name: 'qqSandbox', type: 'switch', label: 'QQ 沙箱环境', description: '测试机器人启用；正式环境按开放平台要求配置出口 IP 白名单。'},
+      {name: 'qqAppId', type: 'text', label: 'QQ 机器人 AppID'},
+      {name: 'qqAppSecret', type: 'password', label: 'QQ 机器人 AppSecret', description: '留空保留原值；关闭 QQ 开关即可停止连接。'},
+      {name: 'qqAllowedOpenIds', type: 'textarea', label: 'QQ 允许发布的 OpenID',
+        description: '向机器人私聊 /whoami 获取，每行一个；不是数字 QQ 号。仅授权可信发布者，消息会公开发布。'},
       {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
       {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
         description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
@@ -515,10 +537,13 @@ module.exports = {
       {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
         description: '用于回调签名校验和事件解密；留空会保留原值。'},
       {name: 'feishuAllowedOpenIds', type: 'textarea', label: '飞书允许发布的 OpenID',
-        description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
+        description: '向机器人发送 /whoami 获取；每行或逗号分隔一个 ou_ 开头的 OpenID，白名单为空时不能发布。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values);
+      await qqGateway?.refresh();
       return {message: '全部设置已保存。'};
     }});
-  }
+  },
+  activate() { qqGateway?.start() },
+  async deactivate() { await qqGateway?.stop() }
 };
