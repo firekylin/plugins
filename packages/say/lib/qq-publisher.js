@@ -6,8 +6,8 @@ const feedback = require('./publish-feedback');
 const {whoami} = require('./commands');
 const HELP = '发送文本、图片、图文或语音可公开发布碎语；纯链接发布为链接。/merge ID1,ID2 合并；/whoami 查看自己的 OpenID。暂不支持群聊、频道、视频、文件、位置和引用消息。';
 
-// Receipts survive reconnects but not restart/eviction; uncertain failures are terminal.
-function createQqPublisher({service, mediaClient, logger, isActive = () => true}) {
+// In-memory reply receipts supplement the injected durable claim for Webhook delivery.
+function createQqPublisher({service, mediaClient, logger, isActive = () => true, claim = async() => true}) {
   const receipts = new Map();
   const pending = new Map();
   return async function receive(event, api, connection) {
@@ -29,10 +29,11 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true}
     if (!['string', 'number'].includes(typeof index) || String(index).length > 128) return;
     const key = JSON.stringify([connection.qqAppId, !!connection.qqSandbox, openId, message.id, index]);
     if (pending.has(key)) return pending.get(key);
-    if (pending.size >= 32) return; // Bound active downloads and writes under an event flood.
+    if (pending.size >= 32) throw Object.assign(new Error('QQ busy'), {code: 'QQ_BUSY'}); // Bound active downloads and writes under an event flood.
     const operation = (async() => {
       let receipt = receipts.get(key);
       if (!receipt) {
+        if (!await claim(key)) return;
         async function authorized() {
           const fresh = await service.settings();
           if (!isActive() || !fresh.enabled || !fresh.qqEnabled || fresh.authorId !== settings.authorId ||

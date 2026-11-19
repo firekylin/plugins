@@ -33,15 +33,6 @@ function mediaUrl(value) {
   return url;
 }
 
-function gatewayUrl(value) {
-  const url = new URL(value);
-  if (url.protocol !== 'wss:' || url.username || url.password || url.port ||
-      !['api.bot.qq.com', 'api.sgroup.qq.com', 'sandbox.api.sgroup.qq.com'].includes(url.hostname)) {
-    throw qqError('QQ_GATEWAY_DENIED');
-  }
-  return url.href;
-}
-
 function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now} = {}) {
   let cached;
   let tokenPending;
@@ -86,7 +77,6 @@ function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now} = {}) 
   }
   return {
     token,
-    async gateway() { return gatewayUrl((await call('/gateway')).url) },
     reply(openId, messageId, text, sequence = 1) {
       return call(`/v2/users/${encodeURIComponent(openId)}/messages`,
         {content: text, msg_type: 0, msg_id: messageId, msg_seq: sequence});
@@ -103,4 +93,4 @@ function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now} = {}) 
   };
 }
 
-module.exports = {createQqApi, gatewayUrl, mediaUrl, readBytes};
+module.exports = {createQqApi, mediaUrl, readBytes};
