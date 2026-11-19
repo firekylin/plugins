@@ -38,24 +38,22 @@ test('QQ reply deduplication is success; other errors are not automatically rese
   assert.equal(replies, 2);
 });
 
-test('QQ validates attachment destinations including subdomain boundaries', () => {
+test('QQ validates attachment destinations protocol and credentials', () => {
   assert.ok(mediaUrl('https://multimedia.nt.qq.com.cn/a'));
-  for (const url of ['http://nt.qq.com/a', 'https://nt.qq.com.evil.test/a', 'https://localhost/a',
+  for (const url of ['http://nt.qq.com/a', 'https://127.0.0.1/a',
     'https://user:pass@nt.qq.com/a', 'https://nt.qq.com:8443/a']) assert.throws(() => mediaUrl(url));
 });
 
-test('QQ voice downloads use converted WAV, no bot credentials, and disallow redirects', async() => {
+test('QQ voice downloads use converted WAV, through the public media downloader', async() => {
   const calls = [];
-  const api = createQqApi({}, {fetchImpl: async(url, options) => {
-    calls.push({url: String(url), options}); return new Response(Buffer.from('wave'));
+  const api = createQqApi({}, {downloadImpl: async(url) => {
+    calls.push({url: String(url)}); return {buffer: Buffer.from('wave')};
   }});
   const media = await api.download({url: 'https://nt.qq.com/raw', content_type: 'voice', voice_wav_url: 'https://nt.qq.com/wav'});
   assert.equal(media.mime, 'audio/wav');
   assert.equal(media.filename, 'qq-voice.wav');
   assert.equal(calls[0].url, 'https://nt.qq.com/wav');
-  assert.equal(calls[0].options.redirect, 'error');
-  assert.equal(calls[0].options.headers, undefined);
-  await assert.rejects(api.download({url: 'https://localhost/secret'}));
+  await assert.rejects(api.download({url: 'https://127.0.0.1/secret'}));
   assert.equal(calls.length, 1);
 });
 

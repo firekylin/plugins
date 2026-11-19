@@ -40,7 +40,7 @@ function diagnostic(error, fallback = 'process') {
     : Number.isInteger(cause?.httpStatus) && cause.httpStatus >= 400 && cause.httpStatus <= 599
       ? `（HTTP ${cause.httpStatus}）` : '';
   const systemHints = {QQ_PUBLISH_DENIED: 'QQ 发布已关闭或发布者授权已变更。',
-    QQ_MEDIA_URL_DENIED: '附件下载地址不属于支持的 QQ 媒体服务。',
+    QQ_MEDIA_URL_DENIED: '附件下载地址必须是公网 HTTPS 地址，且不能包含登录凭据或自定义端口。',
     QQ_API_FAILED: 'QQ 接口调用失败，请检查机器人权限、沙箱模式和出口 IP 白名单。',
     QQ_DOWNLOAD_FAILED: 'QQ 附件下载失败，请检查附件有效期与网络。',
     MEDIA_TYPE_UNSUPPORTED: '平台返回的附件类型暂不支持，请根据参考编号查看文件类型诊断。',

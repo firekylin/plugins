@@ -1,6 +1,6 @@
 'use strict';
 
-const MAX_BYTES = 20 * 1024 * 1024;
+const {downloadPublicMedia, mediaUrl} = require('./public-media');
 const API = 'https://api.bot.qq.com';
 const TOKEN_URL = 'https://bots.qq.com/app/getAppAccessToken';
 const SANDBOX = 'https://sandbox.api.sgroup.qq.com';
@@ -24,17 +24,7 @@ async function readBytes(response, limit) {
   return Buffer.concat(chunks);
 }
 
-function mediaUrl(value) {
-  const url = new URL(value);
-  const hosts = ['nt.qq.com', 'nt.qq.com.cn', 'grouppro.qq.com'];
-  if (url.protocol !== 'https:' || url.username || url.password || url.port ||
-      !hosts.some(host => url.hostname === host || url.hostname.endsWith('.' + host))) {
-    throw qqError('QQ_MEDIA_URL_DENIED');
-  }
-  return url;
-}
-
-function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now} = {}) {
+function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now, downloadImpl = downloadPublicMedia} = {}) {
   let cached;
   let tokenPending;
   const base = settings.qqSandbox ? SANDBOX : API;
@@ -85,11 +75,9 @@ function createQqApi(settings, {fetchImpl = global.fetch, now = Date.now} = {}) 
     async download(attachment) {
       const convertedVoice = attachment.content_type === 'voice' && attachment.voice_wav_url;
       const url = mediaUrl(convertedVoice || attachment.url);
-      const response = await fetchImpl(url, {redirect: 'error', signal: AbortSignal.timeout(15000)});
-      if (!response.ok) throw qqError('QQ_DOWNLOAD_FAILED', response.status);
-      const buffer = await readBytes(response, MAX_BYTES);
+      const {buffer, mime} = await downloadImpl(url);
       return {buffer, filename: convertedVoice ? 'qq-voice.wav' : attachment.filename || 'qq-media',
-        mime: convertedVoice ? 'audio/wav' : attachment.content_type === 'voice' ? 'application/octet-stream' : attachment.content_type || response.headers.get('content-type') || 'application/octet-stream'};
+        mime: convertedVoice ? 'audio/wav' : attachment.content_type === 'voice' ? 'application/octet-stream' : attachment.content_type || mime || 'application/octet-stream'};
     }
   };
 }
