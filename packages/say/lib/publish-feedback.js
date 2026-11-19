@@ -87,6 +87,16 @@ const errorCodes = new Set(['QQ_PUBLISH_DENIED', 'QQ_MEDIA_URL_DENIED', 'QQ_API_
   'SQLITE_READONLY', 'SQLITE_FULL', 'SQLITE_ERROR', 'AccessDenied', 'InvalidAccessKeyId',
   'SignatureDoesNotMatch', 'NoSuchBucket', 'RequestTimeout', 'SlowDown', 'ExpiredToken']);
 
+const downloadNetworkCodes = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+  'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE', 'ABORT_ERR',
+  'ERR_INVALID_IP_ADDRESS', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'ERR_SSL_WRONG_VERSION_NUMBER', 'ERR_STREAM_PREMATURE_CLOSE'
+]);
+
 // Only known media labels are logged; never serialize arbitrary upstream headers or bytes.
 const diagnosticMimes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'audio/mpeg', 'audio/amr', 'audio/amr-wb', 'audio/ogg', 'audio/opus', 'audio/aac',
@@ -109,6 +119,22 @@ function logDetails(error, fallback = 'process') {
         detected: diagnosticMimes.has(media.detected) ? media.detected : 'unknown'
       };
       if (Number.isSafeInteger(media.bytes) && media.bytes >= 0) detail.media.bytes = media.bytes;
+    }
+    if (cause.code === 'QQ_DOWNLOAD_FAILED' && cause.download) {
+      const download = cause.download;
+      detail.download = {};
+      if (['url', 'dns', 'connect', 'response', 'redirect', 'body'].includes(download.phase)) {
+        detail.download.phase = download.phase;
+      }
+      if (['deadline', 'redirect_limit', 'redirect_location_missing', 'request_failed'].includes(download.reason)) {
+        detail.download.reason = download.reason;
+      }
+      if (Number.isInteger(download.hop) && download.hop >= 0 && download.hop <= 3) {
+        detail.download.hop = download.hop;
+      }
+      if (Array.isArray(download.networkCodes)) {
+        detail.download.networkCodes = download.networkCodes.filter(code => downloadNetworkCodes.has(code)).slice(0, 8);
+      }
     }
     if (Number.isSafeInteger(cause.qqCode)) detail.qqCode = cause.qqCode;
     if (Number.isSafeInteger(cause.feishuCode)) detail.feishuCode = cause.feishuCode;

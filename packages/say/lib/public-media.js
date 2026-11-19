@@ -24,6 +24,32 @@ function mediaError(code = 'QQ_DOWNLOAD_FAILED', httpStatus) {
   return Object.assign(new Error('QQ media download failed'), {code, httpStatus});
 }
 
+const networkCodes = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+  'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE', 'ABORT_ERR',
+  'ERR_INVALID_IP_ADDRESS', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'ERR_SSL_WRONG_VERSION_NUMBER', 'ERR_STREAM_PREMATURE_CLOSE'
+]);
+
+// Retain only recognized codes, never upstream messages, URLs, hosts or stacks.
+function networkErrors(error) {
+  const codes = new Set();
+  const pending = [error];
+  const seen = new Set();
+  while (pending.length && seen.size < 16) {
+    const current = pending.shift();
+    if (!current || seen.has(current)) continue;
+    seen.add(current);
+    if (networkCodes.has(current.code)) codes.add(current.code);
+    if (current.cause) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors.slice(0, 8));
+  }
+  return [...codes].slice(0, 8);
+}
+
 function isPublicAddress(address) {
   const family = isIP(address);
   return family === 4 ? !deniedV4.check(address) : family === 6 &&
@@ -51,6 +77,9 @@ async function downloadPublicMedia(value, {
   timeout = 15000,
   limit = 20 * 1024 * 1024
 } = {}) {
+  let phase = 'url';
+  let hop = 0;
+  let reason;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const {signal} = controller;
@@ -66,7 +95,8 @@ async function downloadPublicMedia(value, {
   }
   try {
     let url = mediaUrl(value);
-    for (let hop = 0; hop <= 3; hop++) {
+    for (hop = 0; hop <= 3; hop++) {
+      phase = 'dns';
       const hostname = url.hostname.replace(/^\[|\]$/g, '');
       const family = isIP(hostname);
       const addresses = family ? [{address: hostname, family}] :
@@ -74,6 +104,7 @@ async function downloadPublicMedia(value, {
       if (!addresses.length || addresses.some(item => !isPublicAddress(item.address))) {
         throw mediaError('QQ_MEDIA_URL_DENIED');
       }
+      phase = 'connect';
       // Pin DNS results to this connection; do not resolve again after validation.
       const response = await bounded(new Promise((resolve, reject) => {
         const req = request(url, {
@@ -87,9 +118,14 @@ async function downloadPublicMedia(value, {
         req.on('error', reject);
         req.end();
       }));
+      phase = 'response';
       if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
         response.destroy();
-        if (hop === 3 || !response.headers.location) throw mediaError();
+        if (hop === 3 || !response.headers.location) {
+          reason = hop === 3 ? 'redirect_limit' : 'redirect_location_missing';
+          throw mediaError();
+        }
+        phase = 'redirect';
         url = mediaUrl(new URL(response.headers.location, url).href);
         continue;
       }
@@ -98,6 +134,7 @@ async function downloadPublicMedia(value, {
           throw mediaError('QQ_DOWNLOAD_FAILED', response.statusCode);
         }
         if (Number(response.headers['content-length']) > limit) throw mediaError('MEDIA_SIZE_INVALID');
+        phase = 'body';
         const chunks = [];
         let size = 0;
         await bounded((async() => {
@@ -113,8 +150,15 @@ async function downloadPublicMedia(value, {
       }
     }
   } catch (error) {
-    if (['QQ_MEDIA_URL_DENIED', 'QQ_DOWNLOAD_FAILED', 'MEDIA_SIZE_INVALID'].includes(error.code)) throw error;
-    throw mediaError();
+    const failure = ['QQ_MEDIA_URL_DENIED', 'QQ_DOWNLOAD_FAILED', 'MEDIA_SIZE_INVALID'].includes(error.code)
+      ? error : mediaError();
+    failure.download = {
+      phase,
+      hop,
+      reason: signal.aborted ? 'deadline' : reason || 'request_failed',
+      networkCodes: networkErrors(error)
+    };
+    throw failure;
   } finally {
     clearTimeout(timer);
     controller.abort();

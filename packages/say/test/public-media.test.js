@@ -148,3 +148,36 @@ test('deadline cancels a stalled response body', async() => {
   }), {code: 'QQ_DOWNLOAD_FAILED'});
   assert.equal(response.destroyed, true);
 });
+
+test('download diagnostics distinguish DNS, TLS, aggregate connection and deadline failures', async() => {
+  const {logDetails} = require('../lib/publish-feedback');
+  for (const [phase, error] of [
+    ['dns', Object.assign(new Error('SECRET URL'), {code: 'ENOTFOUND'})],
+    ['connect', Object.assign(new Error('SECRET URL'), {code: 'ERR_TLS_CERT_ALTNAME_INVALID'})],
+    ['connect', new AggregateError([
+      Object.assign(new Error('SECRET URL'), {code: 'ENETUNREACH'}),
+      Object.assign(new Error('SECRET URL'), {code: 'ECONNRESET'})
+    ])]
+  ]) {
+    await assert.rejects(downloadPublicMedia('https://cdn.example/a?token=SECRET', {
+      lookup: phase === 'dns' ? async() => { throw error; } : publicLookup,
+      request() { throw error; }
+    }), failure => {
+      const detail = JSON.parse(logDetails(failure, 'download')).causes[0];
+      assert.equal(detail.download.phase, phase);
+      assert.deepEqual(detail.download.networkCodes, phase === 'dns' ? ['ENOTFOUND'] :
+        error instanceof AggregateError ? ['ENETUNREACH', 'ECONNRESET'] : ['ERR_TLS_CERT_ALTNAME_INVALID']);
+      assert.ok(!JSON.stringify(failure).includes('SECRET'));
+      assert.ok(!logDetails(failure).includes('SECRET'));
+      return true;
+    });
+  }
+  await assert.rejects(downloadPublicMedia('https://cdn.example/a', {
+    lookup: () => new Promise(() => {}), timeout: 10
+  }), error => error.download.phase === 'dns' && error.download.reason === 'deadline');
+  const untrusted = Object.assign(new Error(), {
+    code: 'QQ_DOWNLOAD_FAILED',
+    download: {phase: 'SECRET', reason: 'SECRET', hop: 999, networkCodes: ['SECRET', 'ECONNRESET']}
+  });
+  assert.deepEqual(JSON.parse(logDetails(untrusted)).causes[0].download, {networkCodes: ['ECONNRESET']});
+});
