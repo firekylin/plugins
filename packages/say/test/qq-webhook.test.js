@@ -6,7 +6,8 @@ const {createQqWebhook, privateKey, verify} = require('../lib/qq-webhook');
 const now = () => 1800000000000;
 const secret = 'test-secret';
 function fixture() {
-  const rows = new Map(), writes = [], replies = [], uploads = [];
+  const rows = new Map(), writes = [], replies = [], uploads = [], logs = [];
+  const logger = {info: line => logs.push(line), error: () => {}};
   const settings = {enabled: true, qqEnabled: true, qqAppId: 'app', qqAppSecret: secret, qqSandbox: false, qqAllowedOpenIds: 'USER', authorId: 7};
   let fail = false;
   const getModel = () => ({add: async row => {
@@ -16,8 +17,9 @@ function fixture() {
   }, where: where => ({find: async() => rows.get(where.key) || {}})});
   const service = {settings: async() => ({...settings}), create: async(input, author) => {writes.push({input, author}); return {id: 1}},
     merge: async ids => {writes.push({ids}); return {id: 2}}};
-  const factory = () => createQqWebhook({service, getModel, now, mediaClient: {uploadBuffer: async() => {uploads.push(1); return 'https://media.test/a'}},
-    apiFactory: () => ({reply: async(...args) => {replies.push(args)}, download: async() => ({buffer: Buffer.from('x')})})});
+  const api = {reply: async(...args) => {replies.push(args)}, download: async() => ({buffer: Buffer.from('x')})};
+  const factory = () => createQqWebhook({service, getModel, now, logger, mediaClient: {uploadBuffer: async() => {uploads.push(1); return 'https://media.test/a'}},
+    apiFactory: () => api});
   const event = {op: 0, t: 'C2C_MESSAGE_CREATE', d: {id: 'MESSAGE', author: {user_openid: 'USER'}, content: 'hello'}};
   function request(payload = event, signed = true) {
     const raw = JSON.stringify(payload);
@@ -26,7 +28,7 @@ function fixture() {
     const ctx = {request: {rawBody: raw}, get: name => headers[name] || '', set() {}, throw(status) {throw Object.assign(new Error('rejected'), {status})}};
     return {ctx, headers};
   }
-  return {factory, request, event, rows, writes, replies, settings, uploads, service, fail: () => {fail = true}};
+  return {logs, logger, api, factory, request, event, rows, writes, replies, settings, uploads, service, fail: () => {fail = true}};
 }
 test('verifies official Ed25519 sample and rejects tampered payload', () => {
   const raw = Buffer.from('Arq0D5A61EgUu4OxUvOp');
@@ -134,4 +136,65 @@ test('uses signed raw bytes rather than an independently supplied parsed body', 
   const f = fixture();
   await f.factory()({...f.request(), body: {...f.event, d: {...f.event.d, content: 'forged'}}});
   assert.equal(f.writes[0].input.text, 'hello');
+});
+
+
+const codes = f => f.logs.map(line => line.split(' ').at(-1));
+test('logs challenge and whoami success with per-request correlation and no payload data', async() => {
+  const f = fixture();
+  await f.factory()(f.request({op: 13, d: {plain_token: 'SensitiveChallenge', event_ts: String(now() / 1000)}}, false));
+  assert.deepEqual(codes(f), ['RECEIVED', 'CHALLENGE_RECEIVED', 'CHALLENGE_ACCEPTED']);
+  const challengeId = f.logs[0].split(' ')[2];
+  f.logs.length = 0;
+  f.event.d.content = '/whoami';
+  await f.factory()(f.request());
+  assert.deepEqual(codes(f), ['RECEIVED', 'SIGNATURE_ACCEPTED', 'EVENT_C2C_MESSAGE_CREATE', 'CLAIM_ACQUIRED',
+    'WHOAMI', 'COMMAND_RESPONSE_READY', 'REPLY_STARTED', 'REPLY_SUCCEEDED', 'ACK']);
+  assert.equal(new Set(f.logs.map(line => line.split(' ')[2])).size, 1);
+  assert.notEqual(f.logs[0].split(' ')[2], challengeId);
+  for (const line of f.logs) assert.match(line, /^say: QQ_DIAG [a-f0-9-]{36} [A-Z0-9_]+$/);
+  assert.doesNotMatch(f.logs.join('\n'), /test-secret|SensitiveChallenge|USER|hello|https:/);
+});
+test('logs safe rejection and ignored-event reasons without echoing attacker values', async() => {
+  const cases = [
+    [f => {f.settings.qqEnabled = false}, () => {}, 'DISABLED_OR_UNCONFIGURED'],
+    [() => {}, r => {r.headers['X-Bot-Appid'] = 'secret-injected'}, 'APP_ID_MISMATCH'],
+    [() => {}, r => {delete r.ctx.request.rawBody}, 'RAW_BODY_MISSING'],
+    [() => {}, r => {r.headers['X-Signature-Timestamp'] = '0'}, 'TIMESTAMP_INVALID'],
+    [() => {}, r => {r.headers['X-Signature-Ed25519'] = 'secret-injected'}, 'SIGNATURE_INVALID'],
+    [f => {f.event.t = 'secret-injected\nFAKE_LOG'}, () => {}, 'IGNORED_EVENT_TYPE'],
+    [f => {f.settings.qqAllowedOpenIds = ''}, () => {}, 'IGNORED_NOT_ALLOWLISTED'],
+    [f => {delete f.event.d.author}, () => {}, 'IGNORED_MESSAGE_SHAPE']
+  ];
+  for (const [setup, change, expected] of cases) {
+    const f = fixture(); setup(f); const r = f.request(); change(r);
+    try { await f.factory()(r) } catch (error) { assert.ok([400, 403].includes(error.status)) }
+    assert.ok(codes(f).includes(expected), expected);
+    for (const line of f.logs) assert.match(line, /^say: QQ_DIAG [a-f0-9-]{36} [A-Z0-9_]+$/);
+  }
+});
+test('distinguishes durable duplicates, save failure and reply failure', async() => {
+  const f = fixture();
+  f.api.reply = async() => {throw new Error('secret reply body')};
+  await f.factory()(f.request());
+  assert.ok(codes(f).includes('PUBLISH_SUCCEEDED'));
+  assert.ok(codes(f).includes('REPLY_FAILED'));
+  f.logs.length = 0;
+  await f.factory()(f.request());
+  assert.deepEqual(codes(f), ['RECEIVED', 'SIGNATURE_ACCEPTED', 'EVENT_C2C_MESSAGE_CREATE', 'DUPLICATE_CLAIMED', 'ACK']);
+  const failed = fixture();
+  failed.service.create = async() => {throw new Error('secret database body')};
+  await failed.factory()(failed.request());
+  assert.ok(codes(failed).includes('PUBLISH_FAILED'));
+  assert.doesNotMatch([...f.logs, ...failed.logs].join(' '), /secret|database/);
+});
+test('entry is logged before settings failure; logging failure cannot fail a successful callback', async() => {
+  const f = fixture();
+  f.service.settings = async() => {throw new Error('secret')};
+  await assert.rejects(f.factory()(f.request()));
+  assert.deepEqual(codes(f), ['RECEIVED', 'SETTINGS_FAILED']);
+  const other = fixture();
+  other.logger.info = () => {throw new Error('logger unavailable')};
+  assert.deepEqual(await other.factory()(other.request()), {op: 12});
+  assert.equal(other.writes.length, 1);
 });
