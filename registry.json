@@ -340,12 +340,13 @@
     {
       "type": "plugin",
       "name": "firekylin-plugin-say",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "title": "说说",
       "description": "A lightweight microblog and status publishing plugin for Firekylin",
       "permissions": [
         "content:read",
-        "content:write"
+        "content:write",
+        "media:write"
       ],
       "engines": {
         "node": ">=22.13.0",
