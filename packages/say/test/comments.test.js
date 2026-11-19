@@ -205,3 +205,25 @@ test('legacy lists include native and historical URLs by post ID without exposin
   assert.equal(result.total, 2);
   assert.deepEqual(result.items.map(item => item.comment), ['old', 'native']);
 });
+
+test('native comment filter retains Say switches and moderation without adding a public API', async() => {
+  const Module = require('node:module');
+  const original = Module._load;
+  const f = fixture();
+  let type = 3;
+  f.comments.getModel = name => name === 'post'
+    ? {where: () => ({field: () => ({find: async() => ({id: 7, type})})})} : f.getModel(name);
+  try {
+    Module._load = function(name, ...args) {
+      if (name === 'firekylin/src/service/comment') return {resolveCommentPostId: async() => 7};
+      return original.call(this, name, ...args);
+    };
+    const data = {url: '/says?pathname=example&type=3', status: 'approved'};
+    assert.equal((await f.comments.beforeNativeCreate(data)).status, 'waiting');
+    assert.equal((await f.comments.beforeNativeCreate({...data, status: 'spam'})).status, 'spam');
+    f.settings.commentsEnabled = false;
+    await assert.rejects(f.comments.beforeNativeCreate(data), {status: 403});
+    type = 0;
+    assert.equal(await f.comments.beforeNativeCreate(data), data);
+  } finally { Module._load = original; }
+});
