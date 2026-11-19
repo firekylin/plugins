@@ -10,30 +10,31 @@ const HELP = '发送文本、图片、图文或语音可公开发布碎语；纯
 function createQqPublisher({service, mediaClient, logger, isActive = () => true, claim = async() => true}) {
   const receipts = new Map();
   const pending = new Map();
-  return async function receive(event, api, connection) {
-    if (event.t !== 'C2C_MESSAGE_CREATE' || !isActive()) return;
+  return async function receive(event, api, connection, diagnostic = () => {}) {
+    if (event.t !== 'C2C_MESSAGE_CREATE' || !isActive()) { diagnostic('IGNORED_INACTIVE'); return }
     const message = event.d || {};
     const openId = message.author?.user_openid;
     if (typeof openId !== 'string' || !/^[\w-]{1,128}$/.test(openId) ||
-        typeof message.id !== 'string' || !message.id || message.id.length > 512) return;
+        typeof message.id !== 'string' || !message.id || message.id.length > 512) { diagnostic('IGNORED_MESSAGE_SHAPE'); return }
     const settings = await service.settings();
     if (!isActive() || !settings.enabled || !settings.qqEnabled ||
-        ['qqAppId', 'qqAppSecret', 'qqSandbox'].some(key => settings[key] !== connection[key])) return;
+        ['qqAppId', 'qqAppSecret', 'qqSandbox'].some(key => settings[key] !== connection[key])) { diagnostic('IGNORED_CONFIG_CHANGED'); return }
     const text = typeof message.content === 'string' ? message.content.trim() : '';
     const identity = !message.attachments?.length && whoami('qq', text, openId);
-    if (!identity && !strings(settings.qqAllowedOpenIds).includes(openId)) return;
+    if (!identity && !strings(settings.qqAllowedOpenIds).includes(openId)) { diagnostic('IGNORED_NOT_ALLOWLISTED'); return }
     const ext = message.message_scene?.ext;
     const index = (Array.isArray(ext) ? ext.find(value => typeof value === 'string' && value.startsWith('msg_idx='))?.slice(8)
       : ext?.msg_idx) ?? message.msg_seq ?? '';
     const replySequence = index === '' ? 1 : 1 + (createHash('sha256').update(String(index)).digest().readUInt32BE(0) % 2147483646);
-    if (!['string', 'number'].includes(typeof index) || String(index).length > 128) return;
+    if (!['string', 'number'].includes(typeof index) || String(index).length > 128) { diagnostic('IGNORED_MESSAGE_INDEX'); return }
     const key = JSON.stringify([connection.qqAppId, !!connection.qqSandbox, openId, message.id, index]);
-    if (pending.has(key)) return pending.get(key);
+    if (pending.has(key)) { diagnostic('DUPLICATE_IN_FLIGHT'); return pending.get(key) }
     if (pending.size >= 32) throw Object.assign(new Error('QQ busy'), {code: 'QQ_BUSY'}); // Bound active downloads and writes under an event flood.
     const operation = (async() => {
       let receipt = receipts.get(key);
       if (!receipt) {
-        if (!await claim(key)) return;
+        if (!await claim(key)) { diagnostic('DUPLICATE_CLAIMED'); return }
+        diagnostic('CLAIM_ACQUIRED');
         async function authorized() {
           const fresh = await service.settings();
           if (!isActive() || !fresh.enabled || !fresh.qqEnabled || fresh.authorId !== settings.authorId ||
@@ -48,7 +49,7 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true,
         }
         try {
           let result;
-          if (identity) result = identity;
+          if (identity) { diagnostic('WHOAMI'); result = identity }
           else if (text === '/help') result = {reply: HELP};
           else if ((message.message_type !== undefined && ![0].includes(message.message_type)) || message.msg_elements?.length || message.ark_data) {
             result = {reply: '暂不支持卡片或引用消息，请直接发送文本、图片或语音。'};
@@ -75,8 +76,10 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true,
             result = await save(/^https?:\/\/\S+$/.test(text)
               ? {kind: 'link', url: text, title: text} : {kind: 'text', text});
           } else result = {reply: HELP};
+          diagnostic(result.item ? 'PUBLISH_SUCCEEDED' : 'COMMAND_RESPONSE_READY');
           receipt = {text: result.reply || feedback.success(result.item, result.action), sent: false};
         } catch (error) {
+          diagnostic('PUBLISH_FAILED');
           receipt = {text: feedback.failure(error, key, logger), sent: false};
         }
         receipts.set(key, receipt);
@@ -84,12 +87,15 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true,
       }
       if (!receipt.sent && isActive()) {
         try {
+          diagnostic('REPLY_STARTED');
           await api.reply(openId, message.id, receipt.text, replySequence);
           receipt.sent = true;
+          diagnostic('REPLY_SUCCEEDED');
         } catch (error) {
+          diagnostic('REPLY_FAILED');
           logger?.error?.(`say: QQ reply ${feedback.reference(key)} ${feedback.logDetails(error, 'reply')}`);
         }
-      }
+      } else diagnostic(receipt.sent ? 'REPLY_ALREADY_SENT' : 'REPLY_SKIPPED_INACTIVE');
     })();
     pending.set(key, operation);
     try { return await operation } finally { pending.delete(key) }

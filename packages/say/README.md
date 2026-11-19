@@ -489,6 +489,28 @@ QQ、企业微信、公众号、飞书和外部 API 的处理失败会返回经�
 
 官方参考（核对日期：2026-11-19）：[Webhook](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/event-emit/webhook.html)、[签名验证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/sign.html)、[接入及可选 IP 白名单](https://bot.q.qq.com/wiki/)、[单聊事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html)。
 
+#### Webhook 诊断日志
+
+插件现在会在每次 QQ POST 回调进入时输出 Info 级别日志，包括成功的地址验证。无需开启额外开关；日志格式为 `say: QQ_DIAG <随机请求编号> <阶段码>`。请求编号由服务端生成，同次回调保持一致，不使用 QQ 用户/消息 ID；重复投递有新的请求编号。
+
+在 Vercel Runtime Logs 搜索 `QQ_DIAG`，确保包含 Info 级别，先重新验证回调，再发送一条新的 `/whoami`：
+
+- 验证正常：`RECEIVED → CHALLENGE_RECEIVED → CHALLENGE_ACCEPTED`。
+- `/whoami` 正常：`RECEIVED → SIGNATURE_ACCEPTED → EVENT_C2C_MESSAGE_CREATE → CLAIM_ACQUIRED → WHOAMI → COMMAND_RESPONSE_READY → REPLY_STARTED → REPLY_SUCCEEDED → ACK`。
+- `DISABLED_OR_UNCONFIGURED`：全局/QQ 开关关闭或凭据未配置；`APP_ID_MISMATCH`：请求 AppID 不匹配。
+- `RAW_BODY_MISSING`、`BODY_TOO_LARGE`、`INVALID_JSON`、`INVALID_ENVELOPE`：请求体缺失、超限或格式错误。
+- `CHALLENGE_INVALID`：验证参数或时间不合要求；`TIMESTAMP_INVALID`：消息签名时间缺失、格式错误或超出五分钟窗口；`SIGNATURE_INVALID`：消息签名缺失、格式错误或校验失败。验证地址成功不代表消息验签一定成功。
+- `IGNORED_EVENT_TYPE` / `IGNORED_OPCODE`：签名有效但不属于支持的单聊消息；不会原样输出任意事件名。
+- `IGNORED_MESSAGE_SHAPE` / `IGNORED_MESSAGE_INDEX`：缺少必要消息字段或索引不符合要求；`IGNORED_NOT_ALLOWLISTED`：非 `/whoami` 消息发送者不在发布白名单；`IGNORED_CONFIG_CHANGED` / `IGNORED_INACTIVE`：配置变化或处理已停用。
+- `DUPLICATE_IN_FLIGHT` / `DUPLICATE_CLAIMED`：同进程正在处理或数据库已有领取记录，没有再次发布。
+- `PUBLISH_SUCCEEDED` / `PUBLISH_FAILED`：发布或合并阶段结果；`COMMAND_RESPONSE_READY` 仅表示帮助、命令或不支持格式的回复已准备好，不表示发布成功。
+- `REPLY_STARTED → REPLY_SUCCEEDED` / `REPLY_FAILED`：QQ 回复调用结果；`REPLY_ALREADY_SENT` / `REPLY_SKIPPED_INACTIVE` 表示无需再次回复或已停用。回复失败可结合已有安全错误日志中的 QQ 数字错误码排查环境和权限。
+- `SETTINGS_FAILED` / `PROCESSING_FAILED`：读取设置、领取消息或其他处理异常；`ACK` 仅表示准备确认回调，**不等于微博发布成功或 QQ 已收到回复**。
+
+`RECEIVED` 在读取设置和验签前记录。如果已部署此版本、Info 日志可见，重新验证仍没有 `RECEIVED`，才进一步检查是否进入了当前部署、代理/WAF 或日志采集链路；插件无法观察被平台/代理提前拦截的请求。不要把旧版本没有成功路径日志当作没有收到请求的证据。
+
+诊断日志只含随机编号和固定阶段码，不打印消息正文、OpenID、AppID、消息 ID、签名、凭据、附件 URL 或原始异常。Info 输出会随回调数量增长；无需为了排查而临时输出完整请求。新增日志失败不会改变回调处理结果。真实生产故障原因仍需部署后用日志定位，这些日志本身不是对根因的修复。
+
 ## 碎语评论
 
 评论在 Say 插件内实现，无需修改 Firekylin 核心或新增数据库表。每条碎语有独立详情地址 `/says/<数字 ID>`，公开列表中的“详情 / 评论”可以进入该页面。

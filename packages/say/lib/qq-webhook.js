@@ -36,30 +36,46 @@ function receiptStore(getModel, now = Date.now) {
 function createQqWebhook({service, mediaClient, logger, getModel, apiFactory = createQqApi, now = Date.now}) {
   const receive = createQqPublisher({service, mediaClient, logger, claim: receiptStore(getModel, now)});
   return async({ctx: request}) => {
-    const settings = await service.settings();
-    if (!settings.enabled || !settings.qqEnabled || !settings.qqAppId || !settings.qqAppSecret) return request.throw(403);
-    if (request.get('X-Bot-Appid') !== settings.qqAppId) return request.throw(403);
+    const requestId = crypto.randomUUID();
+    const diagnostic = code => {
+      // Only call with static codes: never log headers, payloads or exception text.
+      try { logger?.info?.(`say: QQ_DIAG ${requestId} ${code}`) } catch { /* Logging must not affect delivery. */ }
+    };
+    diagnostic('RECEIVED');
+    const reject = (status, code, message) => { diagnostic(code); return request.throw(status, message) };
+    let settings;
+    try { settings = await service.settings() } catch (error) { diagnostic('SETTINGS_FAILED'); throw error }
+    if (!settings.enabled || !settings.qqEnabled || !settings.qqAppId || !settings.qqAppSecret) return reject(403, 'DISABLED_OR_UNCONFIGURED');
+    if (request.get('X-Bot-Appid') !== settings.qqAppId) return reject(403, 'APP_ID_MISMATCH');
     const source = request.request?.rawBody;
-    if (typeof source !== 'string' && !Buffer.isBuffer(source)) return request.throw(400, 'QQ_RAW_BODY_REQUIRED');
+    if (typeof source !== 'string' && !Buffer.isBuffer(source)) return reject(400, 'RAW_BODY_MISSING', 'QQ_RAW_BODY_REQUIRED');
     const raw = Buffer.isBuffer(source) ? source : Buffer.from(source);
-    if (raw.length > 1024 * 1024) return request.throw(413);
+    if (raw.length > 1024 * 1024) return reject(413, 'BODY_TOO_LARGE');
     let event;
-    try { event = JSON.parse(raw.toString('utf8')) } catch { return request.throw(400) }
-    if (!event || typeof event !== 'object') return request.throw(400);
+    try { event = JSON.parse(raw.toString('utf8')) } catch { return reject(400, 'INVALID_JSON') }
+    if (!event || typeof event !== 'object') return reject(400, 'INVALID_ENVELOPE');
     request.set('Cache-Control', 'no-store');
     if (event.op === 13) {
+      diagnostic('CHALLENGE_RECEIVED');
       const {plain_token: token, event_ts: timestamp} = event.d || {};
       // Restrict unsigned configuration challenges so this cannot sign arbitrary event JSON.
-      if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(token) || !fresh(timestamp, now)) return request.throw(400);
-      return {plain_token: token, signature: crypto.sign(null, Buffer.from(String(timestamp) + token), privateKey(settings.qqAppSecret)).toString('hex')};
+      if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(token) || !fresh(timestamp, now)) return reject(400, 'CHALLENGE_INVALID');
+      const signature = crypto.sign(null, Buffer.from(String(timestamp) + token), privateKey(settings.qqAppSecret)).toString('hex');
+      diagnostic('CHALLENGE_ACCEPTED');
+      return {plain_token: token, signature};
     }
-    if (!verify(raw, request.get('X-Signature-Timestamp'), request.get('X-Signature-Ed25519'), settings.qqAppSecret, now)) return request.throw(403);
+    if (!fresh(request.get('X-Signature-Timestamp'), now)) return reject(403, 'TIMESTAMP_INVALID');
+    if (!verify(raw, request.get('X-Signature-Timestamp'), request.get('X-Signature-Ed25519'), settings.qqAppSecret, now)) return reject(403, 'SIGNATURE_INVALID');
+    diagnostic('SIGNATURE_ACCEPTED');
     if (event.op === 0 && event.t === 'C2C_MESSAGE_CREATE') {
-      try { await receive(event, apiFactory(settings), settings) } catch {
+      diagnostic('EVENT_C2C_MESSAGE_CREATE');
+      try { await receive(event, apiFactory(settings), settings, diagnostic) } catch {
+        diagnostic('PROCESSING_FAILED');
         logger?.error?.('say: QQ_WEBHOOK_RECEIPT_FAILED; callback not acknowledged.');
         return request.throw(503, 'QQ_WEBHOOK_UNAVAILABLE');
       }
-    }
+    } else diagnostic(event.op === 0 ? 'IGNORED_EVENT_TYPE' : 'IGNORED_OPCODE');
+    diagnostic('ACK');
     // Finish all work inside the invocation; no detached background tasks or heartbeat timers.
     return {op: 12};
   };
