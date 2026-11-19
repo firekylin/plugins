@@ -418,14 +418,14 @@ module.exports = {
     ctx.routes.register({method: 'GET', path: '/says/tag/:tag', scope: 'site', csrf: false,
       handler: async({ctx: request, query, params}) => renderPage(request, query, params.tag)});
 
-    ctx.admin.registerPanel({id: 'say', title: '碎语', icon: 'comment', order: 74});
+    ctx.admin.registerPanel({id: 'say', title: '微博列表', icon: 'comment', order: 74});
     ctx.admin.registerPage({
-      id: 'manage', panel: 'say', title: '碎语管理', description: '发布和管理轻量微博内容。',
+      id: 'manage', panel: 'say', title: '微博列表', description: '发布和管理轻量微博内容。',
       load: async() => {
         const items = await service.all();
         return {sections: [
           {type: 'actions', ids: []},
-          {type: 'table', title: `碎语列表（共 ${items.length} 条）`, rowKey: 'id', pagination: true,
+          {type: 'table', title: `微博列表（共 ${items.length} 条）`, rowKey: 'id', pagination: true,
             search: {keys: ['content', 'tags'], placeholder: '搜索碎语'},
             selection: {input: 'ids', actions: [
               {key: 'public', label: '标记为公开', action: 'bulk-status', input: {status: 'public'}},
@@ -458,7 +458,7 @@ module.exports = {
       description: '修改单条碎语的内容与状态。',
       load: async() => ({sections: [{type: 'form', id: 'edit-say'}]})});
     ctx.admin.registerPage({
-      id: 'settings', panel: 'say', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
+      id: 'settings', title: '碎语设置', description: '设置公开列表和外部消息发布方式。',
       load: async() => ({sections: [
         {type: 'markdown', title: '发布方式配置', content:
           '外部 API、企业微信、微信公众号和飞书可以同时配置和使用，彼此不互斥。按需填写所需方式的配置即可，无需全部配置；完成后点击“保存全部设置”统一保存。'},
