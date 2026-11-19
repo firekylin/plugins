@@ -44,7 +44,7 @@ class SayComments {
   async list(id, page = 1) {
     const target = await this.target(id);
     page = Math.min(100000, Math.max(1, Number.parseInt(page, 10) || 1));
-    const where = {post_id: target.id, url: `/says/${target.id}`, status: 'approved'};
+    const where = {post_id: target.id, status: 'approved'};
     const total = Number(await this.getModel('comment').where(where).count());
     const rows = await this.getModel('comment').where(where).order('id ASC').limit((page - 1) * 20, 20).select();
     // Recheck visibility after database reads, and never expose mail/IP/UA/user IDs or waiting comments.

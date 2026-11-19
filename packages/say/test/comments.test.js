@@ -192,3 +192,16 @@ test('rejects simultaneous submissions and removes a comment when target closes 
   await assert.rejects(other.comments.submit(7, body, other.request), {status: 404});
   assert.equal(other.rows.length, 0);
 });
+
+test('legacy lists include native and historical URLs by post ID without exposing pending comments', async() => {
+  const f = fixture();
+  f.rows.push(
+    {id: 1, post_id: 7, url: '/says/7', status: 'approved', comment: 'old'},
+    {id: 2, post_id: 7, url: '/path?pathname=example&type=3', status: 'approved', comment: 'native'},
+    {id: 3, post_id: 7, url: '/path?pathname=example&type=3', status: 'waiting', comment: 'pending'},
+    {id: 4, post_id: 8, url: '/says/8', status: 'approved', comment: 'other'}
+  );
+  const result = await f.comments.list(7);
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.items.map(item => item.comment), ['old', 'native']);
+});

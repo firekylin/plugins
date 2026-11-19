@@ -11,6 +11,7 @@ const {createQqWebhook} = require('./lib/qq-webhook');
 const {renderSayPage} = require('./lib/render');
 const {renderComments} = require('./lib/comment-render');
 const {SayComments} = require('./lib/comments');
+const {NativeComments, renderNativeComments, clientScript} = require('./lib/native-comments');
 const {FrontendPublish, renderComposer} = require('./lib/frontend-publish');
 const {resolveNeteaseMusic} = require('./lib/netease');
 const {downloadFeishuResource, downloadWechatImage, downloadWechatMedia, downloadWecomMedia,
@@ -375,6 +376,18 @@ module.exports = {
     pluginLogger = ctx.logger;
     const comments = new SayComments({say: service, getModel: name => think.model(name),
       getService: name => think.service(name), now: value => think.datetime(value), logger: ctx.logger});
+    const nativeComments = new NativeComments({comments, getModel: name => think.model(name),
+      getService: name => think.service(name)});
+    ctx.events?.on('comment.beforeCreate', data => nativeComments.beforeCreate(data));
+    ctx.templates.registerFunction('say.comments', () => ({clientUrl: '/api/plugins/say/comment-client.js'}));
+    ctx.routes.register({method: 'GET', path: '/comment-client.js', csrf: false,
+      handler: async({ctx: request}) => {
+        request.type = 'application/javascript';
+        request.set('Cache-Control', 'no-cache');
+        request.body = clientScript();
+      }});
+    ctx.routes.register({method: 'GET', path: '/comments/:id/config', csrf: false,
+      handler: async({ctx: request, params}) => comments.handle(() => nativeComments.configuration(params.id, request), request)});
     const publisher = new FrontendPublish({say: service, getModel: name => think.model(name),
       getService: name => think.service(name)});
     ctx.routes.register({method: 'POST', path: '/frontend-publish', auth: 'admin', csrf: true,
@@ -444,9 +457,13 @@ module.exports = {
         if (!settings.enabled || item.status !== 'public') return request.throw(404);
         let section = '<p>评论已关闭。</p>';
         if (settings.commentsEnabled && item.allowComments) {
-          const listed = await comments.list(item.id, query.page);
-          const config = await comments.configuration();
-          section = renderComments(item.id, listed, config.public);
+          if (nativeComments.supported()) {
+            section = renderNativeComments(item.id);
+          } else {
+            const listed = await comments.list(item.id, query.page);
+            const config = await comments.configuration();
+            section = renderComments(item.id, listed, config.public);
+          }
         }
         request.type = 'text/html';
         request.set('Cache-Control', 'no-store');
