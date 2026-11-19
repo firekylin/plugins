@@ -43,6 +43,34 @@ function decodeBase64Media(value) {
   return {buffer, mime};
 }
 
+// Inspect the first complete identification packet before overriding an unknown MIME.
+// OggS alone identifies a container, which may also contain video or invalid bytes.
+function isOggAudio(buffer) {
+  if (buffer.length < 28 || buffer.subarray(0, 4).toString() !== 'OggS' ||
+      buffer[4] !== 0 || (buffer[5] & 3) !== 2) return false;
+  const segments = buffer[26];
+  const start = 27 + segments;
+  if (!segments || buffer.length < start) return false;
+  let size = 0;
+  let pageSize = 0;
+  let complete = false;
+  for (let index = 27; index < start; index++) {
+    pageSize += buffer[index];
+    if (!complete) {
+      size += buffer[index];
+      complete = buffer[index] < 255;
+    }
+  }
+  if (!complete || buffer.length < start + pageSize) return false;
+  const packet = buffer.subarray(start, start + size);
+  if (packet.length >= 19 && packet.subarray(0, 8).toString() === 'OpusHead') {
+    return packet[8] <= 15 && packet[9] > 0;
+  }
+  return packet.length >= 30 && packet[0] === 1 && packet.subarray(1, 7).toString() === 'vorbis' &&
+    packet.readUInt32LE(7) === 0 && packet[11] > 0 && packet.readUInt32LE(12) > 0 &&
+    (packet[29] & 1) === 1;
+}
+
 function validationError(message, code, buffer, mime) {
   return Object.assign(new Error(message), {
     status: 400,
@@ -62,6 +90,7 @@ async function uploadBuffer(buffer, {filename, mime, userId}, dependencies = {})
   mime = String(mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
   mime = ({'audio/opus': 'audio/ogg', 'application/ogg': 'audio/ogg',
     'audio/x-ogg': 'audio/ogg', 'audio/mp3': 'audio/mpeg', 'audio/x-amr': 'audio/amr'})[mime] || mime;
+  if (!ALLOWED.has(mime) && isOggAudio(buffer)) mime = 'audio/ogg';
   if (!ALLOWED.has(mime)) {
     throw validationError('Unsupported media type', 'MEDIA_TYPE_UNSUPPORTED', buffer, mime);
   }
