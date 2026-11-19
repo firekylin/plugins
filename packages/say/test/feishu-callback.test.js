@@ -335,3 +335,35 @@ for (const kind of ['image', 'audio']) {
     });
   }
 }
+
+test('Feishu whoami permits unlisted authenticated senders, preserves deduplication and blocks forgeries', async t => {
+  const {request, published, replies} = setup(t, {feishuAllowedOpenIds: ''});
+  const payload = message('shared-whoami', 'ou_unlisted');
+  payload.event.message.content = JSON.stringify({text: '/whoami'});
+  await assert.rejects(request(encrypt(payload), {signed: true, signatureValue: 'bad'}), {status: 401});
+  for (const header of [{...payload.header, token: 'wrong'}, {...payload.header, app_id: 'wrong'}]) {
+    await assert.rejects(request(encrypt({...payload, header}), {signed: true}), {status: 401});
+  }
+  assert.equal(replies.length, 0);
+  await request(encrypt(payload), {signed: true});
+  await request(encrypt(payload), {signed: true});
+  assert.equal(replies.length, 1);
+  assert.match(replies[0][1], /飞书 OpenID：ou_unlisted/);
+  assert.deepEqual(published, []);
+  const ordinary = message('shared-whoami-denied', 'ou_unlisted');
+  await request(encrypt(ordinary), {signed: true});
+  assert.equal(replies.length, 1);
+  assert.deepEqual(published, []);
+});
+
+test('Feishu whoami is a text command, not an image payload or arbitrary substring', async t => {
+  const {request, published, replies} = setup(t, {feishuAllowedOpenIds: ''});
+  for (const [index, type, text] of [[0, 'image', '/whoami'], [1, 'text', '/whoami ou_other'], [2, 'text', 'hello /whoami']]) {
+    const payload = message(`whoami-not-command-${index}`, 'ou_unlisted');
+    payload.event.message.message_type = type;
+    payload.event.message.content = JSON.stringify({text});
+    await request(encrypt(payload), {signed: true});
+  }
+  assert.equal(replies.length, 0);
+  assert.deepEqual(published, []);
+});

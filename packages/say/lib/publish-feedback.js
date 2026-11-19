@@ -157,7 +157,7 @@ async function adminResult(operation, action, logger) {
   }
 }
 
-const help = '发送文本、图片、语音、位置或链接即可发布碎语；/merge ID1,ID2 合并碎语。';
+const help = '发送文本、图片、语音、位置或链接即可发布碎语；/merge ID1,ID2 合并碎语；/whoami 查看当前平台的发送者标识。';
 const unsupported = '暂不支持此消息类型，请发送 /help 查看支持的内容。';
 
 module.exports = {diagnostic, logDetails, reference, step, success, failure, receive, adminResult, help, unsupported};

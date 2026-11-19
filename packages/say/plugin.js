@@ -6,6 +6,7 @@ const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feish
   verify: verifyFeishu} = require('./lib/feishu');
 const feishuReply = require('./lib/feishu-reply');
 const feedback = require('./lib/publish-feedback');
+const {isWhoami, whoami} = require('./lib/commands');
 const {createQqGateway} = require('./lib/qq-gateway');
 let qqGateway;
 const {renderSayPage} = require('./lib/render');
@@ -100,6 +101,8 @@ function replaceEmoji(value) {
 }
 
 async function fromWecom(message, settings, mediaClient) {
+  const identity = message.MsgType.toLowerCase() === 'text' && whoami('wecom', message.Content, message.FromUserName);
+  if (identity) return identity;
   const type = message.MsgType.toLowerCase();
   if (type === 'text') {
     const text = replaceEmoji(message.Content).trim();
@@ -157,6 +160,8 @@ function wechatReply(message, content, settings) {
 }
 
 async function fromWechat(message, settings, mediaClient) {
+  const identity = message.MsgType.toLowerCase() === 'text' && whoami('wechat', message.Content, message.FromUserName);
+  if (identity) return identity;
   const allowed = new Set(strings(settings.wechatAllowedOpenIds));
   if (!allowed.has(message.FromUserName)) {
     pluginLogger?.info?.(`say: rejected WeChat publisher OpenID ${message.FromUserName}`);
@@ -232,7 +237,16 @@ function rawJsonRequestBody(request, body) {
   return JSON.stringify(body || {});
 }
 
+function feishuText(message) {
+  if (message.messageType !== 'text') return '';
+  let text = String(message.content.text || '');
+  for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
+  return text.trim();
+}
+
 async function fromFeishu(message, settings, mediaClient) {
+  const identity = whoami('feishu', feishuText(message), message.openId);
+  if (identity) return identity;
   const allowed = new Set(strings(settings.feishuAllowedOpenIds));
   if (!allowed.has(message.openId)) {
     pluginLogger?.info?.(`say: rejected Feishu publisher OpenID ${message.openId}`);
@@ -242,9 +256,7 @@ async function fromFeishu(message, settings, mediaClient) {
   const save = async input => ({item: await feedback.step('save',
     () => service.create(input, settings.authorId)), action: 'publish'});
   if (message.messageType === 'text') {
-    let text = String(message.content.text || '');
-    for (const mention of message.mentions) text = text.replaceAll(mention.key || '', '');
-    text = text.trim();
+    const text = feishuText(message);
     if (!text) return;
     if (text === '/help') return {reply: feedback.help};
     const merge = /^\/merge\s+(.+)$/i.exec(text);
@@ -312,7 +324,7 @@ async function feishuCallback({ctx: request, body}, mediaClient) {
     return request.throw(401, 'Invalid Feishu app ID');
   }
   const message = feishuMessageEvent(payload);
-  if (!message || !strings(settings.feishuAllowedOpenIds).includes(message.openId)) return {};
+  if (!message || (!isWhoami(feishuText(message)) && !strings(settings.feishuAllowedOpenIds).includes(message.openId))) return {};
   if (!/^om_[A-Za-z0-9_-]{1,256}$/.test(message.messageId)) return {};
   const eventKey = `${settings.feishuAppId}:${message.eventId || message.messageId}`;
   let receipt = feishuEvents.get(eventKey);
@@ -509,7 +521,7 @@ module.exports = {
       {name: 'wechatEncodingAESKey', type: 'password', label: '公众号 EncodingAESKey',
         description: '服务器配置需要选择安全模式；留空会保留原值。'},
       {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
-        description: '必填安全配置，每行或逗号分隔一个 OpenID；未列出的关注者不能发布碎语。'},
+        description: '向公众号发送 /whoami 获取；每行或逗号分隔一个 OpenID，未列出的关注者不能发布碎语。'},
       {name: 'qqEnabled', type: 'switch', label: '启用 QQ 私聊发布',
         description: '官方机器人 WebSocket；需要单进程常驻部署。白名单为空时只可使用 /whoami，不允许发布。'},
       {name: 'qqSandbox', type: 'switch', label: 'QQ 沙箱环境', description: '测试机器人启用；正式环境按开放平台要求配置出口 IP 白名单。'},
@@ -525,7 +537,7 @@ module.exports = {
       {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
         description: '用于回调签名校验和事件解密；留空会保留原值。'},
       {name: 'feishuAllowedOpenIds', type: 'textarea', label: '飞书允许发布的 OpenID',
-        description: '每行或逗号分隔一个 ou_ 开头的 OpenID；白名单为空时所有用户都不能发布。'}
+        description: '向机器人发送 /whoami 获取；每行或逗号分隔一个 ou_ 开头的 OpenID，白名单为空时不能发布。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values);
       await qqGateway?.refresh();

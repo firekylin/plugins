@@ -3,6 +3,7 @@
 const {createHash} = require('node:crypto');
 const {strings} = require('./say-service');
 const feedback = require('./publish-feedback');
+const {whoami} = require('./commands');
 const HELP = '发送文本、图片、图文或语音可公开发布碎语；纯链接发布为链接。/merge ID1,ID2 合并；/whoami 查看自己的 OpenID。暂不支持群聊、频道、视频、文件、位置和引用消息。';
 
 // Receipts survive reconnects but not restart/eviction; uncertain failures are terminal.
@@ -19,8 +20,8 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true}
     if (!isActive() || !settings.enabled || !settings.qqEnabled ||
         ['qqAppId', 'qqAppSecret', 'qqSandbox'].some(key => settings[key] !== connection[key])) return;
     const text = typeof message.content === 'string' ? message.content.trim() : '';
-    const whoami = text === '/whoami' && !message.attachments?.length;
-    if (!whoami && !strings(settings.qqAllowedOpenIds).includes(openId)) return;
+    const identity = !message.attachments?.length && whoami('qq', text, openId);
+    if (!identity && !strings(settings.qqAllowedOpenIds).includes(openId)) return;
     const ext = message.message_scene?.ext;
     const index = (Array.isArray(ext) ? ext.find(value => typeof value === 'string' && value.startsWith('msg_idx='))?.slice(8)
       : ext?.msg_idx) ?? message.msg_seq ?? '';
@@ -46,7 +47,7 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true}
         }
         try {
           let result;
-          if (whoami) result = {reply: `你的 QQ 机器人 OpenID：${openId}\n请由站点管理员填入“QQ 允许发布的 OpenID”；它不是数字 QQ 号。`};
+          if (identity) result = identity;
           else if (text === '/help') result = {reply: HELP};
           else if ((message.message_type !== undefined && ![0].includes(message.message_type)) || message.msg_elements?.length || message.ark_data) {
             result = {reply: '暂不支持卡片或引用消息，请直接发送文本、图片或语音。'};
