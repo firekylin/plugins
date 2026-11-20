@@ -58,10 +58,15 @@ function renderComments(id, result, config) {
 module.exports = {renderComments};
 
 function renderWalineComments(item, {options, public: publicConfig}) {
+  if (typeof item.pathname !== 'string' || !item.pathname.trim()) {
+    throw new TypeError('A stored Say pathname is required for native comments');
+  }
+  // Waline 3.16 decodes path once before sending it. Protect query-value escapes
+  // so core receives the stored pathname, not an ID or a partially decoded value.
+  const path = `/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3`;
   const settings = options.comment || {};
   const config = {
-    serverURL: '/api/comment',
-    path: encodeURI(`/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3`),
+    path: encodeURI(path),
     login: publicConfig.forceLogin ? 'force' : 'enable',
     lang: settings.locale && settings.locale !== 'auto' ? settings.locale : 'zh-CN',
     pageSize: Number(settings.pageSize) || 10,
@@ -77,15 +82,16 @@ function renderWalineComments(item, {options, public: publicConfig}) {
   <script type="module">
     const container = document.getElementById('say-comments');
     try {
+      const config = JSON.parse(container.dataset.config);
+      config.serverURL = new URL('/api/comment', window.location.origin).href;
       const [client, response] = await Promise.all([
         import('https://cdn.jsdelivr.net/npm/@waline/client@3.16.0/dist/waline.js'),
-        fetch('/api/comment/api/token', {credentials: 'same-origin'})
+        fetch(config.serverURL + '/api/token', {credentials: 'same-origin'})
       ]);
       const result = await response.json();
       if (!response.ok || result.errno !== 0) throw new Error('session');
       if (result.data?.objectId) localStorage.setItem('WALINE_USER', JSON.stringify({...result.data, remember: true}));
       else localStorage.removeItem('WALINE_USER');
-      const config = JSON.parse(container.dataset.config);
       container.textContent = '';
       client.init({...config, el: container});
     } catch {
