@@ -9,7 +9,7 @@ function setup(t) {
   const forms = [];
   const pages = [];
   const noop = () => {};
-  const settings = {enabled: true, commentsEnabled: false, pageSize: 20, authorId: 1, amapKey: 'private-map-key',
+  const settings = {enabled: true, pageSize: 20, authorId: 1, amapKey: 'private-map-key',
     apiKey: 'private-api-key-123456', wecomCorpId: 'corp', wecomCorpSecret: 'private-corp-secret',
     wecomToken: 'private-corp-token', wecomEncodingAESKey: 'a'.repeat(43),
     wechatAppId: 'wx_app', wechatAppSecret: 'private-wx-secret', wechatToken: 'private-wx-token',
@@ -23,7 +23,7 @@ function setup(t) {
       registerPanel: noop, registerPage: page => pages.push(page),
       registerForm: form => forms.push(form), registerAction: noop
     }});
-  return {forms: forms.filter(form => form.page === 'settings'), pages, settings, load};
+  return {allForms: forms, forms: forms.filter(form => form.page === 'settings'), pages, settings, load};
 }
 
 test('references one registered settings resource, not a separate Feishu endpoint', async t => {
@@ -103,4 +103,10 @@ test('saves all providers concurrently and preserves existing partial-save behav
     assert.equal(reloaded.pageSize, 30);
     assert.ok(!Object.hasOwn(reloaded, 'settingsGroup'));
   }
+});
+
+test('new post forms allow comments and settings have no global comment switch', async t => {
+  const {allForms, forms} = setup(t);
+  assert.equal((await allForms.find(form => form.id === 'publish-say').load()).allowComments, true);
+  assert.ok(forms.every(form => form.fields.every(field => field.name !== 'commentsEnabled')));
 });

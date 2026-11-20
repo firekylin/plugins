@@ -29,7 +29,7 @@ class FrontendPublish {
     }
     // Author, kind, visibility and source are server-owned for this simple composer.
     const item = await this.say.create({kind: 'text', status: 'public', text: body.text,
-      source: 'Firekylin', allowComments: false}, identity.id);
+      source: 'Firekylin', allowComments: true}, identity.id);
     return {success: true, id: item.id};
   }
 }

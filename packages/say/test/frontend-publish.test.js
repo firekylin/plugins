@@ -28,7 +28,7 @@ test('renders only login for guests, nothing for other accounts and composer for
 test('publishes only text under authenticated author, ignoring forged fields', async() => {
   const f = setup();
   assert.deepEqual(await f.publisher.submit(f.request, {text: 'hello #tag', user_id: 1, kind: 'image', status: 'private', allowComments: true}), {success: true, id: 9});
-  assert.deepEqual(f.writes, [{author: 7, input: {kind: 'text', status: 'public', text: 'hello #tag', source: 'Firekylin', allowComments: false}}]);
+  assert.deepEqual(f.writes, [{author: 7, input: {kind: 'text', status: 'public', text: 'hello #tag', source: 'Firekylin', allowComments: true}}]);
 });
 test('denies missing, banned, demoted and non-admin accounts, disabled publishing and invalid requests', async() => {
   for (const change of [f => { f.session = null }, f => { f.user = {} }, f => { f.user.status = 0 },
