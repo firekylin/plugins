@@ -82,7 +82,7 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.throws(() => normalize({kind: 'unknown', text: 'content'}), /Invalid say kind/);
   assert.throws(() => normalize({status: 'privte', text: 'content'}), /Invalid say status/);
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
-    {enabled: true, commentsEnabled: false, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
+    {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
       wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: '', feishuAppId: '',
       feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '', feishuAllowedOpenIds: '',
@@ -189,4 +189,22 @@ test('comment switches persist and comments prevent destructive operations', asy
   assert.equal((await service.get(a.id)).status, 'private');
   comments.length = 0;
   assert.equal(await service.remove(a.id), 1);
+});
+
+test('new says allow comments by default while explicit and historical opt-outs persist', async() => {
+  const {service, rows} = fixture();
+  for (const source of ['Firekylin', 'API', 'QQ', '飞书', '企业微信', '微信公众号']) {
+    const item = await service.create({text: source, source}, 1);
+    assert.equal((await service.get(item.id)).allowComments, true);
+  }
+  const closed = await service.create({text: 'closed', allowComments: false}, 1);
+  assert.equal((await service.get(closed.id)).allowComments, false);
+  await service.update(closed.id, {text: 'edited'});
+  assert.equal((await service.get(closed.id)).allowComments, false);
+  const copy = await service.duplicate(closed.id, 1);
+  assert.equal(copy.allowComments, false);
+  rows[0].allow_comment = 0;
+  await service.update(rows[0].id, {text: 'historical'});
+  assert.equal((await service.get(rows[0].id)).allowComments, false);
+  assert.equal(Object.hasOwn(normalizeSettings({commentsEnabled: true}, {commentsEnabled: false}), 'commentsEnabled'), false);
 });

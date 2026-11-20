@@ -24,7 +24,7 @@ class SayComments {
     const settings = await this.say.settings();
     const item = await this.say.get(id);
     if (!settings.enabled || item.status !== 'public') fail(404, '碎语不存在。');
-    if (!settings.commentsEnabled || !item.allowComments) fail(writing ? 403 : 404, '这条碎语的评论已关闭。');
+    if (!item.allowComments) fail(writing ? 403 : 404, '这条碎语的评论已关闭。');
     return item;
   }
 

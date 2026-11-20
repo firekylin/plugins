@@ -8,7 +8,6 @@ const KINDS = new Set(['text', 'image', 'textpic', 'voice', 'location', 'link', 
 const STATUSES = new Set(['public', 'private', 'hidden']);
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
-  commentsEnabled: false,
   pageSize: 10,
   apiKey: '',
   authorId: 1,
@@ -72,7 +71,6 @@ function normalizeSettings(value = {}, previous = {}) {
       ? value.qqAppSecret.trim().slice(0, 256) : prior.qqAppSecret,
     qqAllowedOpenIds: typeof value.qqAllowedOpenIds === 'string'
       ? [...new Set(strings(value.qqAllowedOpenIds))].join('\n') : prior.qqAllowedOpenIds,
-    commentsEnabled: typeof value.commentsEnabled === 'boolean' ? value.commentsEnabled : prior.commentsEnabled,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,
@@ -139,7 +137,7 @@ function normalize(input = {}) {
   if (!KINDS.has(kind)) throw Object.assign(new Error('Invalid say kind'), {status: 400});
   if (!STATUSES.has(status)) throw Object.assign(new Error('Invalid say status'), {status: 400});
   const text = String(input.text || '').trim().slice(0, 20000);
-  const data = {kind, status, allowComments: input.allowComments === true, text, tags: tags(input.tags, text), source: String(input.source || 'Firekylin').slice(0, 80)};
+  const data = {kind, status, allowComments: input.allowComments === undefined ? true : input.allowComments === true, text, tags: tags(input.tags, text), source: String(input.source || 'Firekylin').slice(0, 80)};
   if (['image', 'textpic'].includes(kind)) {
     data.images = strings(input.images).slice(0, 20).map((item, index) => safeUrl(item, `Image ${index + 1}`));
     if (!data.images.length) throw Object.assign(new Error('At least one image URL is required'), {status: 400});

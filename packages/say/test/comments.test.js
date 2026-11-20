@@ -6,7 +6,7 @@ const {renderComments} = require('../lib/comment-render');
 
 function fixture() {
   const rows = [];
-  const settings = {enabled: true, commentsEnabled: true};
+  const settings = {enabled: true, commentsEnabled: false}; // Obsolete stored option must have no effect.
   const item = {id: 7, status: 'public', allowComments: true};
   const options = {comment: {}};
   let user;
@@ -47,7 +47,7 @@ test('stores pending comments with canonical target and ignores forged identity/
 
 test('requires public, enabled, commentable targets for reads and writes', async() => {
   for (const change of [f => { f.item.status = 'private' }, f => { f.item.status = 'hidden' },
-    f => { f.settings.enabled = false }, f => { f.settings.commentsEnabled = false }, f => { f.item.allowComments = false }]) {
+    f => { f.settings.enabled = false }, f => { f.item.allowComments = false }]) {
     const f = fixture(); change(f);
     await assert.rejects(f.comments.list(7));
     await assert.rejects(f.comments.submit(7, body, f.request));
@@ -170,7 +170,7 @@ test('registered detail and comment routes respect visibility without changing n
   const request = {set() {}, throw(status) {throw Object.assign(new Error(), {status})}};
   await detail.handler({ctx: request, params: {id: '7'}, query: {}});
   assert.match(request.body, /评论已关闭/);
-  t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: true}));
+  t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: false}));
   get.mock.mockImplementation(async() => ({id: 7, pathname: 'example', status: 'public', allowComments: true, text: 'hello', tags: []}));
   t.mock.method(SayComments.prototype, 'configuration', async() => ({options: {}, public: {}}));
   await detail.handler({ctx: request, params: {id: '7'}, query: {}});
@@ -231,7 +231,7 @@ test('native comment filter retains Say switches and moderation without adding a
     const data = {url: '/says?pathname=example&type=3', status: 'approved'};
     assert.equal((await f.comments.beforeNativeCreate(data)).status, 'waiting');
     assert.equal((await f.comments.beforeNativeCreate({...data, status: 'spam'})).status, 'spam');
-    f.settings.commentsEnabled = false;
+    f.item.allowComments = false;
     await assert.rejects(f.comments.beforeNativeCreate(data), {status: 403});
     type = 0;
     assert.equal(await f.comments.beforeNativeCreate(data), data);
