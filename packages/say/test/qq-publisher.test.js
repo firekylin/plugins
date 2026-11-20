@@ -7,7 +7,7 @@ const {normalizeSettings} = require('../lib/say-service');
 
 function fixture() {
   const settings = normalizeSettings({qqEnabled: true, qqAppId: '123', qqAppSecret: 'secret',
-    qqAllowedOpenIds: 'USER', authorId: 7});
+    authorId: 7});
   let active = true;
   let uploadFailure;
   const writes = [], uploads = [], replies = [], logs = [], downloads = [];
@@ -27,27 +27,29 @@ function fixture() {
     failUpload: error => { uploadFailure = error }, stop: () => { active = false }, run: data => receive(data, api, {...settings})};
 }
 
-test('QQ settings default off, preserve blank secret and normalize explicit publisher IDs', () => {
+test('QQ settings retain AppID validation and ignore obsolete publisher lists', () => {
   assert.equal(normalizeSettings().qqEnabled, false);
-  const settings = normalizeSettings({qqAppSecret: '', qqAllowedOpenIds: 'USER,USER\nOTHER'}, {qqAppSecret: 'keep'});
+  const settings = normalizeSettings({qqAppSecret: '', qqAllowedOpenIds: '*'}, {qqAppSecret: 'keep', qqAllowedOpenIds: 'USER'});
   assert.equal(settings.qqAppSecret, 'keep');
-  assert.equal(settings.qqAllowedOpenIds, 'USER\nOTHER');
-  assert.throws(() => normalizeSettings({qqAllowedOpenIds: '*'}), /Invalid QQ/);
+  assert.equal(Object.hasOwn(settings, 'qqAllowedOpenIds'), false);
+  assert.throws(() => normalizeSettings({qqAppId: '*'}), /Invalid QQ/);
 });
 
-test('QQ fails closed for non-private/unauthorized/disabled events; whoami does not publish', async() => {
+test('QQ retains private-message scope, disabled checks and whoami without publisher filtering', async() => {
   const f = fixture();
+  f.settings.qqAllowedOpenIds = 'USER'; // Old persisted configuration must not restrict another sender.
   await f.run(f.event({}, {t: 'GROUP_AT_MESSAGE_CREATE'}));
-  await f.run(f.event({author: {user_openid: 'OTHER'}}));
-  assert.equal(f.replies.length, 0);
-  await f.run(f.event({author: {user_openid: 'OTHER'}, content: '/whoami'}));
-  assert.match(f.replies[0][2], /OTHER/);
   assert.equal(f.writes.length, 0);
-  f.settings.qqAllowedOpenIds = '';
-  await f.run(f.event());
+  await f.run(f.event({id: 'OTHER_POST', author: {user_openid: 'OTHER'}}));
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.writes[0].author, 7);
+  await f.run(f.event({id: 'WHOAMI', author: {user_openid: 'OTHER'}, content: '/whoami'}));
+  assert.match(f.replies[1][2], /OTHER/);
+  assert.equal(f.writes.length, 1);
   f.settings.qqEnabled = false;
-  await f.run(f.event({content: '/whoami'}));
-  assert.equal(f.replies.length, 1);
+  await f.run(f.event());
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.replies.length, 2);
 });
 
 test('QQ publishes text and links with configured owner and replies after storage', async() => {
@@ -131,7 +133,7 @@ test('QQ partial upload failure is terminal and does not leak storage or databas
 });
 
 test('QQ stop or author revocation during download prevents subsequent upload and save', async() => {
-  for (const revoke of [f => f.stop(), f => { f.settings.qqAllowedOpenIds = '' }, f => { f.settings.authorId = 9 }]) {
+  for (const revoke of [f => f.stop(), f => { f.settings.qqEnabled = false }, f => { f.settings.authorId = 9 }]) {
     const f = fixture();
     const download = f.api.download;
     f.api.download = async item => { revoke(f); return download(item) };
@@ -152,9 +154,8 @@ test('QQ rejects unsupported structured and mixed attachments without downloadin
 });
 
 
-test('long QQ indexes allow whoami without allowlisting and retain duplicate protection', async() => {
+test('long QQ indexes allow whoami and retain duplicate protection', async() => {
   const f = fixture();
-  f.settings.qqAllowedOpenIds = '';
   const prefix = 'x'.repeat(256);
   const first = f.event({content: '/whoami', message_scene: {ext: [`msg_idx=${prefix}A`]}});
   const second = f.event({content: '/whoami', message_scene: {ext: [`msg_idx=${prefix}B`]}});
@@ -170,8 +171,7 @@ test('long QQ indexes allow whoami without allowlisting and retain duplicate pro
 test('unexpected optional index shapes fall back to message-ID deduplication', async() => {
   for (const index of [{value: 1}, [], true]) {
     const f = fixture();
-    f.settings.qqAllowedOpenIds = '';
-    const event = f.event({content: '/whoami', msg_seq: index});
+      const event = f.event({content: '/whoami', msg_seq: index});
     await f.run(event);
     await f.run(event);
     assert.equal(f.replies.length, 1);

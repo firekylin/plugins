@@ -70,7 +70,7 @@ function message(eventId, openId = 'ou_allowed') {
     content: JSON.stringify({text: 'hello'})}}};
 }
 
-test('ordinary events still require fresh valid signatures, token, app ID and publisher allowlist', async t => {
+test('ordinary events still require fresh valid signatures, token and app ID', async t => {
   const {request, published} = setup(t);
   const payload = message('security-check');
   await assert.rejects(request(encrypt(payload)), {status: 401, message: 'Invalid Feishu signature'});
@@ -80,7 +80,6 @@ test('ordinary events still require fresh valid signatures, token, app ID and pu
   for (const header of [{...payload.header, token: 'wrong'}, {...payload.header, app_id: 'wrong'}]) {
     await assert.rejects(request(encrypt({...payload, header}), {signed: true}), {status: 401});
   }
-  assert.deepEqual(await request(encrypt(message('not-allowed', 'ou_other')), {signed: true}), {});
   assert.deepEqual(published, []);
   // Preserve the exact raw bytes when verifying signatures, including whitespace.
   const body = encrypt(payload);
@@ -182,10 +181,10 @@ test('media API failures identify the failed step without echoing the provider r
   assert.equal(published.length, 0);
 });
 
-test('only authenticated allowlisted messages can trigger replies, never URL verification', async t => {
+test('only authenticated messages can trigger replies, never URL verification', async t => {
   const {request, replies} = setup(t);
   await assert.rejects(request(encrypt(message('unsigned-feedback'))), {status: 401});
-  await request(encrypt(message('unauthorized-feedback', 'ou_other')), {signed: true});
+  await assert.rejects(request(encrypt(message('unauthorized-feedback', 'ou_other')), {signed: true, signatureValue: 'bad'}), {status: 401});
   await request({type: 'url_verification', token: settings.feishuVerificationToken, challenge: 'verify'});
   assert.equal(replies.length, 0);
 });
@@ -352,8 +351,8 @@ test('Feishu whoami permits unlisted authenticated senders, preserves deduplicat
   assert.deepEqual(published, []);
   const ordinary = message('shared-whoami-denied', 'ou_unlisted');
   await request(encrypt(ordinary), {signed: true});
-  assert.equal(replies.length, 1);
-  assert.deepEqual(published, []);
+  assert.equal(replies.length, 2);
+  assert.equal(published.length, 1);
 });
 
 test('Feishu whoami is a text command, not an image payload or arbitrary substring', async t => {
@@ -364,6 +363,16 @@ test('Feishu whoami is a text command, not an image payload or arbitrary substri
     payload.event.message.content = JSON.stringify({text});
     await request(encrypt(payload), {signed: true});
   }
-  assert.equal(replies.length, 0);
-  assert.deepEqual(published, []);
+  assert.equal(replies.length, 3);
+  assert.ok(replies.every(reply => !reply[1].includes('飞书 OpenID：')));
+  assert.equal(published.length, 2);
+});
+
+test('Feishu publishes from another platform-validated sender under the configured author', async t => {
+  const {request, published} = setup(t, {feishuAllowedOpenIds: 'ou_someone_else'});
+  let author;
+  t.mock.method(SayService.prototype, 'create', async(item, id) => { author = id; published.push(item); return {...item, id: 42} });
+  await request(encrypt(message('another-publisher', 'ou_new')), {signed: true});
+  assert.equal(published.length, 1);
+  assert.equal(author, settings.authorId);
 });
