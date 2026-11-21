@@ -1,6 +1,7 @@
 'use strict';
 
 const {strings} = require('./say-service');
+const {detailUrl} = require('./urls');
 
 function fail(status, message) { throw Object.assign(new Error(message), {status, publicCommentError: true}) }
 function idOf(value) {
@@ -79,7 +80,7 @@ class SayComments {
 
   async create(id, body, request) {
     const item = await this.target(id, true);
-    const path = `/says/${item.id}`;
+    const path = detailUrl(item.id);
     const {options, captcha, captchaConfig} = await this.configuration();
     const host = this.getService('comment');
     if (!host?.create || !host?.context || !host?.validateCommentInput) fail(503, '当前核心缺少兼容的评论服务。');

@@ -8,7 +8,8 @@ const feishuReply = require('./lib/feishu-reply');
 const feedback = require('./lib/publish-feedback');
 const {whoami} = require('./lib/commands');
 const {createQqWebhook} = require('./lib/qq-webhook');
-const {renderSayPage} = require('./lib/render');
+const {renderSayPage, createSayViewModel} = require('./lib/render');
+const {listUrl, tagUrl} = require('./lib/urls');
 const {renderWalineComments} = require('./lib/comment-render');
 const {SayComments} = require('./lib/comments');
 const {FrontendPublish, renderComposer} = require('./lib/frontend-publish');
@@ -413,27 +414,29 @@ module.exports = {
       handler: request => wechatCallback(request, mediaClient)});
     ctx.routes.register({method: 'POST', path: '/feishu', csrf: false,
       handler: request => feishuCallback(request, mediaClient)});
-    const renderPage = async(request, query, tag = '') => {
+    const renderPage = async(request, query, tag = '', renderTheme, listPath = listUrl) => {
       const settings = await service.settings();
       const result = await service.list({...query, tag, publicOnly: true});
       const options = await think.model('options').getOptions();
       const identity = await publisher.identity(request);
       request.set('Cache-Control', 'private, no-store');
       request.type = 'text/html; charset=utf-8';
-      request.body = renderSayPage(result, {title: `${options.title || ''} · 碎语`, tag, amapKey: settings.amapKey,
+      const viewModel = createSayViewModel(result, {title: `${options.title || ''} · 碎语`, tag, listPath,
         composer: renderComposer(identity, settings.enabled)});
+      const html = typeof renderTheme === 'function' ? await renderTheme(viewModel.view, {say: viewModel}) : undefined;
+      request.body = html === undefined ? renderSayPage(result, {viewModel, amapKey: settings.amapKey}) : html;
     };
     ctx.routes.register({method: 'GET', path: '/says', scope: 'site', csrf: false,
-      handler: async({ctx: request, query}) => renderPage(request, query, String(query.tag || ''))});
+      handler: async({ctx: request, query, renderTheme}) => renderPage(request, query, String(query.tag || ''), renderTheme)});
     ctx.routes.register({method: 'GET', path: '/says/tag/:tag', scope: 'site', csrf: false,
-      handler: async({ctx: request, query, params}) => renderPage(request, query, params.tag)});
+      handler: async({ctx: request, query, params, renderTheme}) => renderPage(request, query, params.tag, renderTheme, tagUrl(params.tag))});
 
     ctx.routes.register({method: 'GET', path: '/comments/:id', csrf: false,
       handler: async({ctx: request, params, query}) => comments.handle(() => comments.list(params.id, query.page), request)});
     ctx.routes.register({method: 'POST', path: '/comments/:id', csrf: false,
       handler: async({ctx: request, params, body}) => comments.handle(() => comments.submit(params.id, body, request), request)});
     ctx.routes.register({method: 'GET', path: '/says/:id', scope: 'site', csrf: false,
-      handler: async({ctx: request, params, query}) => {
+      handler: async({ctx: request, params, renderTheme}) => {
         if (!/^[1-9]\d{0,14}$/.test(params.id)) return request.throw(404);
         const settings = await service.settings();
         const item = await service.get(params.id);
@@ -445,8 +448,11 @@ module.exports = {
         }
         request.type = 'text/html';
         request.set('Cache-Control', 'no-store');
-        request.body = renderSayPage({items: [item], page: 1, pageSize: 1, total: 1},
-          {title: `碎语 #${item.id}`, amapKey: settings.amapKey, section, navigation: await service.publicNeighbors(item.id)});
+        const result = {items: [item], page: 1, pageSize: 1, total: 1};
+        const viewModel = createSayViewModel(result, {view: 'detail', title: `碎语 #${item.id}`, section,
+          navigation: await service.publicNeighbors(item.id)});
+        const html = typeof renderTheme === 'function' ? await renderTheme('detail', {say: viewModel}) : undefined;
+        request.body = html === undefined ? renderSayPage(result, {viewModel, amapKey: settings.amapKey}) : html;
       }});
 
     ctx.admin.registerPanel({id: 'say', title: '微博列表', icon: 'comment', order: 74});
