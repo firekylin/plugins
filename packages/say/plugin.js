@@ -370,7 +370,7 @@ module.exports = {
     service = new SayService({getModel: name => think.model(name), now: () => think.datetime()});
     pluginLogger = ctx.logger;
     const comments = new SayComments({say: service, getModel: name => think.model(name),
-      getService: name => think.service(name), now: value => think.datetime(value), logger: ctx.logger});
+      getService: name => think.service(name), logger: ctx.logger});
     ctx.events.on('comment.beforeCreate', data => comments.beforeNativeCreate(data));
     const publisher = new FrontendPublish({say: service, getModel: name => think.model(name),
       getService: name => think.service(name)});

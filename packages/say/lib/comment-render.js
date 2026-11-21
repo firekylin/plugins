@@ -1,6 +1,6 @@
 'use strict';
 const {escapeHtml: esc} = require('./render');
-const {detailUrl} = require('./urls');
+const {commentUrl} = require('./urls');
 
 function renderComments(id, result, config) {
   const captcha = config.captcha;
@@ -14,7 +14,7 @@ function renderComments(id, result, config) {
     ${result.items.map(item => `<article class="say-item"><b>${esc(item.nick)}</b> <time>${esc(item.createdAt)}</time><p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(item.comment)}</p></article>`).join('')}
     <nav>${result.page > 1 ? `<a href="?page=${result.page - 1}#comments-title">上一页评论</a>` : ''}
     ${result.page * result.pageSize < result.total ? `<a href="?page=${result.page + 1}#comments-title">下一页评论</a>` : ''}</nav>
-    <p>评论审核通过后显示。${config.forceLogin ? '本站要求登录后评论。' : ''}<a href="/admin/login">登录博客</a></p>
+    <p>评论是否立即公开取决于站点的审核设置。${config.forceLogin ? '本站要求登录后评论。' : ''}<a href="/admin/login">登录博客</a></p>
     <form id="say-comment-form" data-endpoint="/api/plugins/say/comments/${Number(id)}" data-provider="${esc(provider)}" data-key="${esc(key)}">
     <p><label>昵称 <input name="nick" maxlength="80" autocomplete="nickname"></label></p>
     <p><label>邮箱（不会公开）<input name="mail" type="email" maxlength="255" autocomplete="email"></label></p>
@@ -59,15 +59,11 @@ function renderComments(id, result, config) {
 module.exports = {renderComments};
 
 function renderWalineComments(item, {options, public: publicConfig}) {
-  if (typeof item.pathname !== 'string' || !item.pathname.trim()) {
-    throw new TypeError('A stored Say pathname is required for native comments');
-  }
   // Waline 3.16 decodes path once before sending it. Protect query-value escapes
   // so core receives the stored pathname, not an ID or a partially decoded value.
-  const path = `${detailUrl(item.id)}?pathname=${encodeURIComponent(item.pathname)}&type=3`;
   const settings = options.comment || {};
   const config = {
-    path: encodeURI(path),
+    path: encodeURI(commentUrl(item)),
     login: publicConfig.forceLogin ? 'force' : 'enable',
     lang: settings.locale && settings.locale !== 'auto' ? settings.locale : 'zh-CN',
     pageSize: Number(settings.pageSize) || 10,
