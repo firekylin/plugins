@@ -1,7 +1,7 @@
 'use strict';
 
-const {strings} = require('./say-service');
-const {detailUrl} = require('./urls');
+const {SAY_TYPE} = require('./say-service');
+const {commentUrl} = require('./urls');
 
 function fail(status, message) { throw Object.assign(new Error(message), {status, publicCommentError: true}) }
 function idOf(value) {
@@ -11,11 +11,10 @@ function idOf(value) {
 
 // Plugin-owned targets; no changes to the native article/page URL resolver.
 class SayComments {
-  constructor({say, getModel, getService, now, logger}) {
+  constructor({say, getModel, getService, logger}) {
     this.say = say;
     this.getModel = getModel;
     this.getService = getService;
-    this.now = now;
     this.logger = logger;
     this.pending = new Map();
   }
@@ -29,18 +28,17 @@ class SayComments {
     return item;
   }
 
-  // Native Waline submissions bypass submit()/create() below. Apply Say's
-  // enablement/comment switches and review-before-publication policy here.
-  // Other post types keep the core's policy; existing spam stays spam.
+  // Say owns target availability. Firekylin owns moderation for every post type.
+  // Keep the original data, including status set by core or earlier filters.
   async beforeNativeCreate(data) {
     const host = require('firekylin/src/service/comment');
     const options = await this.getModel('options').getOptions();
     const id = await host.resolveCommentPostId({model: this.getModel}, data.url, options);
     if (!id) return data;
     const row = await this.getModel('post').where({id}).field('id,type').find();
-    if (Number(row.type) !== require('./say-service').SAY_TYPE) return data;
+    if (Number(row.type) !== SAY_TYPE) return data;
     await this.target(id, true);
-    return {...data, status: data.status === 'spam' ? 'spam' : 'waiting'};
+    return data;
   }
 
   async configuration() {
@@ -80,19 +78,25 @@ class SayComments {
 
   async create(id, body, request) {
     const item = await this.target(id, true);
-    const path = detailUrl(item.id);
-    const {options, captcha, captchaConfig} = await this.configuration();
     const host = this.getService('comment');
-    if (!host?.create || !host?.context || !host?.validateCommentInput) fail(503, '当前核心缺少兼容的评论服务。');
-    // Use the host's authenticated comment identity, not an author ID supplied by the client.
-    request.state.jwtSecret ||= options.jwt_secret || options.comment_jwt_secret;
-    const controller = {ctx: request, model: this.getModel, service: this.getService,
-      get: name => request.query?.[name]};
+    if (!host?.create || !host?.context || !host?.validateCommentTarget ||
+        !host?.validateCommentInput || !host?.syncCount) {
+      fail(503, '当前核心缺少兼容的评论服务。');
+    }
+    const controller = {
+      ctx: request, model: this.getModel, service: this.getService,
+      get: name => request.query?.[name]
+    };
     const runtime = await host.create(controller);
+    if (!runtime?.core?.comment?.create || !runtime.options || !runtime.config) {
+      fail(503, '当前核心缺少兼容的评论服务。');
+    }
+    // Authenticate through the same cookie/token context as /api/comment.
+    request.state.jwtSecret ||= runtime.options.jwt_secret || runtime.options.comment_jwt_secret;
     const context = await host.context(controller, runtime.users, runtime.core, runtime.tokenService, runtime.avatarService);
     const user = context.state.userInfo;
-    const config = options.comment || {};
-    if (!user && config.forceLogin) fail(401, '请先登录博客账号再评论。');
+    // Keep the legacy endpoint's authentication error ahead of form validation.
+    if (!user && runtime.config.forceLogin) fail(401, '请先登录博客账号再评论。');
     const data = {};
     for (const field of ['comment', 'nick', 'mail', 'link', 'captcha']) {
       if (body[field] !== undefined && typeof body[field] !== 'string') fail(400, '评论字段格式不正确。');
@@ -110,30 +114,34 @@ class SayComments {
       try { url = new URL(data.link) } catch { fail(400, '网站地址格式不正确。') }
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) fail(400, '网站地址需要 HTTP 或 HTTPS。');
     }
-    try { host.validateCommentInput(data, context, config) } catch { fail(400, '评论不符合站点的字数或必填信息要求。') }
-    if (strings(config.disallowIPList).includes(request.ip)) fail(403, '当前地址不允许评论。');
-    if (!user && !await captcha.verify(captchaConfig, data.captcha, request.ip, 'comment')) fail(403, '验证码校验失败，请刷新页面后重试。');
-    const model = () => this.getModel('comment');
-    const interval = Math.max(10, Number(config.ipQps) || 60);
-    const since = this.now(new Date(Date.now() - interval * 1000));
-    if (Number(await model().where({ip: request.ip || '', inserted_at: ['>', since]}).count())) fail(429, '评论过于频繁，请稍后再试。');
-    if (Number(await model().where({post_id: item.id, comment: data.comment, nick: data.nick, mail: data.mail}).count())) {
-      fail(409, '这条评论已提交，请勿重复发送。');
+    // Build the target and metadata on the server. Never pass through status,
+    // user_id, URL, reply IDs, or other client-provided properties.
+    data.url = commentUrl(item);
+    data.ua = String(request.get('user-agent') || '').slice(0, 1024);
+    try {
+      const post = await host.validateCommentTarget(controller, data.url);
+      if (Number(post?.id) !== item.id || Number(post?.type) !== SAY_TYPE) {
+        fail(404, '碎语不存在。');
+      }
+      host.validateCommentInput(data, context, runtime.config);
+      await this.target(id, true);
+      await runtime.core.comment.create(data, context);
+    } catch (error) {
+      // Preserve the legacy HTTP statuses without creating a second policy or
+      // returning native errors/details that may include private data.
+      switch (error?.code) {
+        case 'UNAUTHORIZED': fail(401, '请先登录博客账号再评论。'); break;
+        case 'FORBIDDEN': fail(403, '评论未通过站点校验，请检查验证码后重试。'); break;
+        case 'COMMENT_DISABLED': fail(403, '这条碎语的评论已关闭。'); break;
+        case 'COMMENT_TOO_FAST': fail(429, '评论过于频繁，请稍后再试。'); break;
+        case 'DUPLICATE_CONTENT': fail(409, '这条评论已提交，请勿重复发送。'); break;
+        case 'VALIDATION_ERROR': fail(400, '评论不符合站点的字数或必填信息要求。'); break;
+        case 'INVALID_PATH': fail(404, '碎语不存在。'); break;
+        default: throw error;
+      }
     }
-    await this.target(id, true);
-    const timestamp = this.now();
-    const spam = strings(config.forbiddenWords).some(word => data.comment.toLowerCase().includes(word.toLowerCase()));
-    const saved = await model().add({post_id: item.id, url: path, comment: data.comment,
-      nick: data.nick, mail: data.mail, link: data.link, user_id: user ? String(user.objectId) : null,
-      ip: String(request.ip || '').slice(0, 64), ua: String(request.get('user-agent') || '').slice(0, 1024),
-      status: spam ? 'spam' : 'waiting', sticky: 0, like: 0, pid: null, rid: null,
-      inserted_at: timestamp, created_at: timestamp, updated_at: timestamp});
-    // A target removed or hidden during submission must not retain a newly submitted comment.
-    try { await this.target(id, true) } catch (error) {
-      await model().where({id: Number(saved), post_id: item.id}).delete();
-      throw error;
-    }
-    return {message: '评论已提交，审核通过后会显示。'};
+    await host.syncCount(controller, item.id);
+    return {message: '评论已提交。'};
   }
 
   async handle(operation, request) {
