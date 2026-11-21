@@ -1,5 +1,6 @@
 'use strict';
 const {escapeHtml: esc} = require('./render');
+const {detailUrl} = require('./urls');
 
 function renderComments(id, result, config) {
   const captcha = config.captcha;
@@ -63,7 +64,7 @@ function renderWalineComments(item, {options, public: publicConfig}) {
   }
   // Waline 3.16 decodes path once before sending it. Protect query-value escapes
   // so core receives the stored pathname, not an ID or a partially decoded value.
-  const path = `/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3`;
+  const path = `${detailUrl(item.id)}?pathname=${encodeURIComponent(item.pathname)}&type=3`;
   const settings = options.comment || {};
   const config = {
     path: encodeURI(path),

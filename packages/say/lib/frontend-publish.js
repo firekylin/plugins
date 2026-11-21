@@ -1,5 +1,6 @@
 'use strict';
 const {escapeHtml: esc} = require('./render');
+const {listUrl} = require('./urls');
 
 class FrontendPublish {
   constructor({say, getModel, getService}) { Object.assign(this, {say, getModel, getService}) }
@@ -36,7 +37,7 @@ class FrontendPublish {
 
 function renderComposer(identity, enabled) {
   if (!enabled) return '';
-  if (!identity.loggedIn) return '<section class="say-item"><a href="/admin/login?redirect=%2Fsays">登录</a></section>';
+  if (!identity.loggedIn) return `<section class="say-item"><a href="/admin/login?redirect=${encodeURIComponent(listUrl)}">登录</a></section>`;
   if (!identity.canPublish) return '';
   return `<section class="say-item" aria-labelledby="say-publish-title"><h2 id="say-publish-title">发布微博</h2>
     <form id="say-publish-form" data-csrf="${esc(identity.csrf)}">
@@ -56,7 +57,7 @@ function renderComposer(identity, enabled) {
           const response = await fetch('/api/plugins/say/frontend-publish', {method: 'POST', credentials: 'same-origin',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': form.dataset.csrf},
             body: JSON.stringify({text: form.elements.text.value})});
-          if (response.ok && (await response.json()).success) { location.assign('/says'); return; }
+          if (response.ok && (await response.json()).success) { location.assign('${listUrl}'); return; }
           result.textContent = response.status === 403 ? '无法发布，请确认登录账号和发布权限，刷新页面后重试。'
             : response.status === 400 ? '请输入 1 至 20000 字的微博内容。' : '发布未确认，请先刷新列表核对，勿立即重发。';
         } catch { result.textContent = '发布未确认，请先刷新列表核对，勿立即重发。'; }

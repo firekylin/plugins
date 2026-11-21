@@ -552,3 +552,102 @@ QQ 附件下载失败时，参考编号对应日志中的 `download` 会记录�
 单条碎语详情底部、评论区域上方显示「上一条 / 下一条」。上一条指向更早发布的公开碎语，下一条指向更晚发布的公开碎语；同一发布时间按 ID 排序。私密、隐藏以及其他内容类型不参与导航，无相邻条目时不显示对应链接。
 
 飞书、QQ 的 OpenID 白名单配置与过滤已移除（不是改为可选），历史 `feishuAllowedOpenIds` / `qqAllowedOpenIds` 值不再生效。任何能向该机器人发送合规消息的人，都可触发以配置作者发布；平台签名、Token、AppID 校验、机器人接收范围、去重及 `/whoami` 保留。微信公众号的 OpenID 白名单不受此调整影响。
+
+## 用主题模板接管公开页面
+
+在支持站点路由 `renderTheme` 的 Firekylin 核心上，当前启用主题可以覆盖 Say 的三种页面：
+
+| 请求 | 主题内的文件 |
+| --- | --- |
+| `/says` | `plugins/say/list.eta` |
+| `/says/tag/:tag`，或兼容入口 `/says?tag=标签` | `plugins/say/tag.eta` |
+| `/says/:id` | `plugins/say/detail.eta` |
+
+例如，独立项目的文件可放在 `themes/你的主题/plugins/say/list.eta`；旧目录部署放在 `www/theme/你的主题/plugins/say/list.eta`。只读取**当前启用主题**中的文件。
+
+可以只覆盖其中一个页面。对应文件不存在时，Say 继续输出原来的内置页面；旧核心没有 `renderTheme` 时也保持原样。已有模板的语法错误、include/布局错误会正常报错，不会悄悄回退。空文件输出空页面。模板输出完整 HTML，可按当前主题的结构使用 Eta 布局、include、Widget 和公共主题上下文。此能力不改变 JSON API、发布接口、后台页面或已有 `say.list` / `Widget_Plugin_Say`。
+
+### 页面数据：`firekylin.say`
+
+三种模板读取同一结构，数据和链接由 Say 准备，不需要主题重新访问数据库或拼接路由：
+
+- `view`：`list`、`tag` 或 `detail`。
+- `title`、`heading`、`tag`：文档标题、页面标题、当前标签；无标签时 `tag` 为空字符串。
+- `items`：当前页的公开碎语。保留内容字段：`id`、`pathname`、`kind`、`status`、`text`、`tags`、`images`、`mediaUrl`、`latitude`、`longitude`、`label`、`url`、`title`、`description`、`artist`、`cover`、`source`、`createdAt`、`updatedAt`、`allowComments`、`commentCount`。另提供 `detailUrl` 和 `tagLinks`（`{name, url}` 数组）。某种内容没有的字段可能为空或不存在。
+- `item`：详情页的当前碎语，列表和标签页为 `null`。
+- `pagination`：`page`、`pageSize`、`total`、`totalPages`、`previousUrl`、`nextUrl`。没有对应页时链接为 `null`。
+- `navigation`：详情的 `previous` / `next`，值为 `{id, url}` 或 `null`。上一条为更早、下一条为更新的公开碎语，同一发布时间按 ID 排序；列表页两项均为 `null`。
+- `urls`：`list` 是 `/says`，`tag` 是当前标签路径或 `null`，`current` 是当前内容/列表页生成的 URL。
+- `html.items`：已转义的内置碎语组件，含媒体、标签及详情链接。样式由主题提供。
+- `html.composer`：原有登录/管理员发布组件；详情页为空。包含当前请求所需的 CSRF 信息，不要跨请求缓存或重复插入。
+- `html.comments`：详情的原生评论组件，或“评论已关闭”提示；列表页为空。保留存储 pathname 和 `type=3` 的评论目标，不要把它改成单独的数字 ID。
+
+`html.*` 是可以使用 `<%~ ... %>` 输出的现有组件。正文等普通字段必须使用 `<%= ... %>` 转义，不要当 HTML 原样输出。页面模型不包含平台配置、发布 API Key、JWT、SMTP 密码或原始登录身份。高德 Web 服务 Key 也不会传给主题，所以 `html.items` 对位置碎语只输出位置文本；主题可以用经纬度自行实现地图。缺少模板时，原内置页面仍保留原来的静态地图。
+
+公开/隐藏规则仍在模板渲染前由插件执行：非公开或不存在的详情返回 404，关闭插件后不显示公开数据。模板只改变展示，不授予发布或评论权限。列表继续发送 `Cache-Control: private, no-store`，详情继续 `no-store`，不能把含发布框的页面放入共享缓存。
+
+### 最小完整模板
+
+下面可直接作为 `plugins/say/list.eta`，也可复制成 `tag.eta` 和 `detail.eta` 后分别调整布局。保留 `html.composer` / `html.comments` 可保留原发布和评论交互；不插入某组件就不会显示它。
+
+```eta
+<% const say = firekylin.say; %>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= say.title %></title>
+</head>
+<body>
+  <main>
+    <a href="<%= say.urls.list %>">全部碎语</a>
+    <h1><%= say.heading %></h1>
+    <%~ say.html.composer %>
+    <% if (say.items.length) { %>
+      <%~ say.html.items %>
+    <% } else { %>
+      <p>暂无碎语</p>
+    <% } %>
+    <% if (say.view === 'detail') { %>
+      <nav aria-label="相邻碎语">
+        <% if (say.navigation.previous) { %>
+          <a rel="prev" href="<%= say.navigation.previous.url %>">上一条</a>
+        <% } %>
+        <% if (say.navigation.next) { %>
+          <a rel="next" href="<%= say.navigation.next.url %>">下一条</a>
+        <% } %>
+      </nav>
+    <% } else { %>
+      <nav aria-label="碎语分页">
+        <% if (say.pagination.previousUrl) { %>
+          <a href="<%= say.pagination.previousUrl %>">上一页</a>
+        <% } %>
+        <% if (say.pagination.nextUrl) { %>
+          <a href="<%= say.pagination.nextUrl %>">下一页</a>
+        <% } %>
+      </nav>
+    <% } %>
+    <%~ say.html.comments %>
+  </main>
+</body>
+</html>
+```
+
+要自行排版正文，可以将 `html.items` 替换成对 `say.items` 的循环，例如：
+
+```eta
+<% for (const item of say.items) { %>
+  <article>
+    <p style="white-space:pre-wrap"><%= item.text %></p>
+    <% for (const tag of item.tagLinks) { %>
+      <a href="<%= tag.url %>">#<%= tag.name %></a>
+    <% } %>
+    <a href="<%= item.detailUrl %>">详情 / 评论 <%= item.commentCount %></a>
+  </article>
+<% } %>
+```
+
+此示例只排版文字，图片/语音/链接等可按 `kind` 自行渲染，或继续使用完整的 `html.items`。
+
+链接规则保持兼容：详情始终为 `/says/ID`，标签链接为 URL 编码后的 `/says/tag/标签`；分页保留当前列表路径，并保留既有 `page` 和 `tag` 查询参数。`/says?tag=标签` 的分页仍指向 `/says?page=N&tag=标签`，不会被改成标签路径。主题直接使用提供的 URL，无需自行编码标签或猜测相邻条目。
