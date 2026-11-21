@@ -16,7 +16,7 @@ function setup(t) {
     wechatEncodingAESKey: 'b'.repeat(43), wechatAllowedOpenIds: 'wx_user',
     feishuAppId: 'cli_app', feishuAppSecret: 'private-feishu-secret',
     feishuVerificationToken: 'private-feishu-token', feishuEncryptKey: 'private-feishu-key',
-    feishuAllowedOpenIds: 'ou_user', qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: '', qqAllowedOpenIds: ''};
+    qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: ''};
   const load = t.mock.method(SayService.prototype, 'settings', async() => ({...settings}));
   plugin.register({logger: {info: noop}, widgets: {Widget: class {}, register: noop},
     events: {on: noop}, templates: {registerFunction: noop}, routes: {register: noop}, admin: {
@@ -89,7 +89,7 @@ test('saves all providers concurrently and preserves existing partial-save behav
   const changes = {external: {apiKey: 'new-api-key-at-least-16'},
     wecom: {wecomCorpId: 'corp_updated', wecomCorpSecret: ''},
     wechat: {wechatAppId: '', wechatAllowedOpenIds: ''},
-    feishu: {feishuAppId: 'cli_updated', feishuAllowedOpenIds: ''}};
+    feishu: {feishuAppId: 'cli_updated'}};
   for (const values of Object.values(changes)) {
     const before = {...stored};
     await form.submit({...values, pageSize: 30});
@@ -109,4 +109,9 @@ test('new post forms allow comments and settings have no global comment switch',
   const {allForms, forms} = setup(t);
   assert.equal((await allForms.find(form => form.id === 'publish-say').load()).allowComments, true);
   assert.ok(forms.every(form => form.fields.every(field => field.name !== 'commentsEnabled')));
+});
+
+test('Feishu and QQ publisher allowlist controls are removed', t => {
+  const {forms} = setup(t);
+  assert.ok(forms.every(form => form.fields.every(field => !['qqAllowedOpenIds', 'feishuAllowedOpenIds'].includes(field.name))));
 });

@@ -1,7 +1,6 @@
 'use strict';
 
 const {createHash} = require('node:crypto');
-const {strings} = require('./say-service');
 const feedback = require('./publish-feedback');
 const {whoami} = require('./commands');
 const HELP = '发送文本、图片、图文或语音可公开发布碎语；纯链接发布为链接。/merge ID1,ID2 合并；/whoami 查看自己的 OpenID。暂不支持群聊、频道、视频、文件、位置和引用消息。';
@@ -21,7 +20,6 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true,
         ['qqAppId', 'qqAppSecret', 'qqSandbox'].some(key => settings[key] !== connection[key])) { diagnostic('IGNORED_CONFIG_CHANGED'); return }
     const text = typeof message.content === 'string' ? message.content.trim() : '';
     const identity = !message.attachments?.length && whoami('qq', text, openId);
-    if (!identity && !strings(settings.qqAllowedOpenIds).includes(openId)) { diagnostic('IGNORED_NOT_ALLOWLISTED'); return }
     const ext = message.message_scene?.ext;
     let index = (Array.isArray(ext) ? ext.find(value => typeof value === 'string' && value.startsWith('msg_idx='))?.slice(8)
       : ext?.msg_idx) ?? message.msg_seq ?? '';
@@ -47,8 +45,7 @@ function createQqPublisher({service, mediaClient, logger, isActive = () => true,
         async function authorized() {
           const fresh = await service.settings();
           if (!isActive() || !fresh.enabled || !fresh.qqEnabled || fresh.authorId !== settings.authorId ||
-              ['qqAppId', 'qqAppSecret', 'qqSandbox'].some(name => fresh[name] !== connection[name]) ||
-              !strings(fresh.qqAllowedOpenIds).includes(openId)) {
+              ['qqAppId', 'qqAppSecret', 'qqSandbox'].some(name => fresh[name] !== connection[name])) {
             throw Object.assign(new Error('QQ publishing stopped'), {code: 'QQ_PUBLISH_DENIED'});
           }
         }

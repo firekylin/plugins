@@ -158,6 +158,7 @@ test('registered detail and comment routes respect visibility without changing n
   const hooks = [];
   const noop = () => {};
   t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: false}));
+  t.mock.method(SayService.prototype, 'publicNeighbors', async() => ({previous: 6, next: 8}));
   const get = t.mock.method(SayService.prototype, 'get', async() => ({id: 7, status: 'public', text: 'hello', tags: []}));
   require('../plugin').register({widgets: {Widget: class {}, register: noop}, events: {on: (name, handler) => hooks.push({name, handler})}, templates: {registerFunction: noop},
     routes: {register: route => routes.push(route)}, admin: {registerPanel: noop, registerPage: noop, registerForm: noop, registerAction: noop}});
@@ -170,6 +171,8 @@ test('registered detail and comment routes respect visibility without changing n
   const request = {set() {}, throw(status) {throw Object.assign(new Error(), {status})}};
   await detail.handler({ctx: request, params: {id: '7'}, query: {}});
   assert.match(request.body, /评论已关闭/);
+  assert.match(request.body, /href="\/says\/6" rel="prev"/);
+  assert.match(request.body, /href="\/says\/8" rel="next"/);
   t.mock.method(SayService.prototype, 'settings', async() => ({enabled: true, commentsEnabled: false}));
   get.mock.mockImplementation(async() => ({id: 7, pathname: 'example', status: 'public', allowComments: true, text: 'hello', tags: []}));
   t.mock.method(SayComments.prototype, 'configuration', async() => ({options: {}, public: {}}));

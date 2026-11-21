@@ -85,11 +85,12 @@ test('normalizes content, tags, URLs and settings', () => {
     {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
       wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: '', feishuAppId: '',
-      feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '', feishuAllowedOpenIds: '',
-      qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: '', qqAllowedOpenIds: ''});
+      feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '',
+      qqEnabled: false, qqSandbox: true, qqAppId: '', qqAppSecret: ''});
   assert.equal(normalizeSettings({authorId: 2}, {enabled: false}).enabled, false);
   assert.equal(normalizeSettings({wechatAllowedOpenIds: 'one\ntwo,one'}).wechatAllowedOpenIds, 'one\ntwo');
-  assert.equal(normalizeSettings({feishuAllowedOpenIds: 'ou_one, ou_two'}).feishuAllowedOpenIds, 'ou_one\nou_two');
+  assert.equal(Object.hasOwn(normalizeSettings({feishuAllowedOpenIds: 'ou_one'}, {qqAllowedOpenIds: 'USER'}), 'feishuAllowedOpenIds'), false);
+  assert.equal(Object.hasOwn(normalizeSettings({}, {qqAllowedOpenIds: 'USER'}), 'qqAllowedOpenIds'), false);
   assert.throws(() => normalizeSettings({apiKey: 'short'}), /at least 16/);
   assert.throws(() => normalizeSettings({wecomEncodingAESKey: 'short'}), /43 characters/);
   assert.throws(() => normalizeSettings({wechatEncodingAESKey: 'short'}), /43 characters/);
@@ -207,4 +208,31 @@ test('new says allow comments by default while explicit and historical opt-outs 
   await service.update(rows[0].id, {text: 'historical'});
   assert.equal((await service.get(rows[0].id)).allowComments, false);
   assert.equal(Object.hasOwn(normalizeSettings({commentsEnabled: true}, {commentsEnabled: false}), 'commentsEnabled'), false);
+});
+
+test('public neighbors follow publication time and ID ties, excluding private/hidden/other types', async() => {
+  const {service, rows} = fixture();
+  for (let index = 0; index < 5; index++) await service.create({text: String(index)}, 1);
+  rows[0].create_time = '2026-10-12 12:00:00';
+  rows[1].create_time = '2026-10-11 12:00:00';
+  rows[2].create_time = '2026-10-12 12:00:00';
+  rows[3].is_public = 0;
+  rows[4].status = 0;
+  rows.push({...rows[0], id: 99, type: 0});
+  assert.deepEqual(await service.publicNeighbors(2), {previous: null, next: 1});
+  assert.deepEqual(await service.publicNeighbors(1), {previous: 2, next: 3});
+  assert.deepEqual(await service.publicNeighbors(3), {previous: 1, next: null});
+  for (const id of [4, 5, 99, 999]) assert.deepEqual(await service.publicNeighbors(id), {previous: null, next: null});
+  await service.saveSettings({enabled: false});
+  assert.deepEqual(await service.publicNeighbors(1), {previous: null, next: null});
+});
+
+test('detail navigation renders only available anchors before comments', () => {
+  const result = {items: [], page: 1, pageSize: 1, total: 0};
+  const html = renderSayPage(result, {navigation: {previous: 2, next: 4}, section: '<section id="comments"></section>'});
+  assert.match(html, /href="\/says\/2" rel="prev"/);
+  assert.match(html, /href="\/says\/4" rel="next"/);
+  assert.ok(html.indexOf('aria-label="相邻微博"') < html.indexOf('id="comments"'));
+  assert.doesNotMatch(renderSayPage(result, {navigation: {previous: null, next: null}}), /相邻微博/);
+  assert.doesNotMatch(renderSayPage(result, {navigation: {previous: null, next: 4}}), /rel="prev"/);
 });

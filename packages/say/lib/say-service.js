@@ -25,12 +25,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   feishuAppSecret: '',
   feishuVerificationToken: '',
   feishuEncryptKey: '',
-  feishuAllowedOpenIds: '',
   qqEnabled: false,
   qqSandbox: true,
   qqAppId: '',
-  qqAppSecret: '',
-  qqAllowedOpenIds: ''
+  qqAppSecret: ''
 });
 
 function parse(value, fallback = {}) {
@@ -57,11 +55,8 @@ function normalizeSettings(value = {}, previous = {}) {
       !/^[A-Za-z0-9+/]{43}$/.test(value.wechatEncodingAESKey)) {
     throw Object.assign(new Error('WeChat EncodingAESKey must be 43 characters'), {status: 400});
   }
-  for (const key of ['qqAppId', 'qqAllowedOpenIds']) {
-    const ids = key === 'qqAppId' ? [value[key]?.trim?.()].filter(Boolean) : strings(value[key]);
-    if (typeof value[key] === 'string' && ids.some(id => !/^[A-Za-z0-9_-]{1,128}$/.test(id))) {
-      throw Object.assign(new Error('Invalid QQ AppID or OpenID'), {status: 400});
-    }
+  if (typeof value.qqAppId === 'string' && value.qqAppId.trim() && !/^[A-Za-z0-9_-]{1,128}$/.test(value.qqAppId.trim())) {
+    throw Object.assign(new Error('Invalid QQ AppID'), {status: 400});
   }
   return {
     qqEnabled: typeof value.qqEnabled === 'boolean' ? value.qqEnabled : prior.qqEnabled,
@@ -69,8 +64,6 @@ function normalizeSettings(value = {}, previous = {}) {
     qqAppId: typeof value.qqAppId === 'string' ? value.qqAppId.trim().slice(0, 128) : prior.qqAppId,
     qqAppSecret: typeof value.qqAppSecret === 'string' && value.qqAppSecret.trim()
       ? value.qqAppSecret.trim().slice(0, 256) : prior.qqAppSecret,
-    qqAllowedOpenIds: typeof value.qqAllowedOpenIds === 'string'
-      ? [...new Set(strings(value.qqAllowedOpenIds))].join('\n') : prior.qqAllowedOpenIds,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,
@@ -98,9 +91,7 @@ function normalizeSettings(value = {}, previous = {}) {
     feishuVerificationToken: typeof value.feishuVerificationToken === 'string' && value.feishuVerificationToken
       ? value.feishuVerificationToken.trim().slice(0, 256) : prior.feishuVerificationToken,
     feishuEncryptKey: typeof value.feishuEncryptKey === 'string' && value.feishuEncryptKey
-      ? value.feishuEncryptKey.trim().slice(0, 256) : prior.feishuEncryptKey,
-    feishuAllowedOpenIds: typeof value.feishuAllowedOpenIds === 'string'
-      ? [...new Set(strings(value.feishuAllowedOpenIds))].join('\n') : prior.feishuAllowedOpenIds
+      ? value.feishuEncryptKey.trim().slice(0, 256) : prior.feishuEncryptKey
   };
 }
 
@@ -323,6 +314,16 @@ class SayService {
   async all() {
     return (await this.model().setRelation(false).where({type: SAY_TYPE})
       .order('create_time DESC').select()).map(decode);
+  }
+
+  async publicNeighbors(id) {
+    const empty = {previous: null, next: null};
+    if (!(await this.settings()).enabled) return empty;
+    const items = (await this.all()).filter(item => item.status === 'public')
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
+    const index = items.findIndex(item => item.id === Number(id));
+    if (index < 0) return empty;
+    return {previous: items[index - 1]?.id || null, next: items[index + 1]?.id || null};
   }
 
   async list({page = 1, pageSize, tag, status, keyword, publicOnly = false} = {}) {

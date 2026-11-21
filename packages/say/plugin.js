@@ -6,7 +6,7 @@ const {decrypt: decryptFeishu, eventToken: feishuEventToken, messageEvent: feish
   verify: verifyFeishu} = require('./lib/feishu');
 const feishuReply = require('./lib/feishu-reply');
 const feedback = require('./lib/publish-feedback');
-const {isWhoami, whoami} = require('./lib/commands');
+const {whoami} = require('./lib/commands');
 const {createQqWebhook} = require('./lib/qq-webhook');
 const {renderSayPage} = require('./lib/render');
 const {renderWalineComments} = require('./lib/comment-render');
@@ -251,11 +251,6 @@ function feishuText(message) {
 async function fromFeishu(message, settings, mediaClient) {
   const identity = whoami('feishu', feishuText(message), message.openId);
   if (identity) return identity;
-  const allowed = new Set(strings(settings.feishuAllowedOpenIds));
-  if (!allowed.has(message.openId)) {
-    pluginLogger?.info?.(`say: rejected Feishu publisher OpenID ${message.openId}`);
-    return;
-  }
   const source = '飞书';
   const save = async input => ({item: await feedback.step('save',
     () => service.create(input, settings.authorId)), action: 'publish'});
@@ -328,7 +323,7 @@ async function feishuCallback({ctx: request, body}, mediaClient) {
     return request.throw(401, 'Invalid Feishu app ID');
   }
   const message = feishuMessageEvent(payload);
-  if (!message || (!isWhoami(feishuText(message)) && !strings(settings.feishuAllowedOpenIds).includes(message.openId))) return {};
+  if (!message) return {};
   if (!/^om_[A-Za-z0-9_-]{1,256}$/.test(message.messageId)) return {};
   const eventKey = `${settings.feishuAppId}:${message.eventId || message.messageId}`;
   let receipt = feishuEvents.get(eventKey);
@@ -451,7 +446,7 @@ module.exports = {
         request.type = 'text/html';
         request.set('Cache-Control', 'no-store');
         request.body = renderSayPage({items: [item], page: 1, pageSize: 1, total: 1},
-          {title: `碎语 #${item.id}`, amapKey: settings.amapKey, section});
+          {title: `碎语 #${item.id}`, amapKey: settings.amapKey, section, navigation: await service.publicNeighbors(item.id)});
       }});
 
     ctx.admin.registerPanel({id: 'say', title: '微博列表', icon: 'comment', order: 74});
@@ -504,7 +499,7 @@ module.exports = {
         {type: 'markdown', title: '消息平台回调设置', content:
           '- 企业微信：`/api/plugins/say/wecom`。\n' +
           '- 微信公众号：`/api/plugins/say/wechat`，服务器配置必须选择安全模式，并将发布者 OpenID 加入白名单。\n' +
-          '- 飞书：`/api/plugins/say/feishu`，配置 Encrypt Key，订阅 `im.message.receive_v1`，并将发布者 OpenID 加入白名单。'},
+          '- 飞书：`/api/plugins/say/feishu`，配置 Encrypt Key，订阅 `im.message.receive_v1`。任何能向机器人发送合规消息的人均可按配置作者发布。'},
         {type: 'markdown', title: '公开访问', content:
           '公开页面：`/says`；标签页面：`/says/tag/标签`；JSON API：`/api/plugins/say/list`。主题可调用 `say.list` 或 `Widget_Plugin_Say`。'}
       ]})
@@ -559,21 +554,17 @@ module.exports = {
       {name: 'wechatAllowedOpenIds', type: 'textarea', label: '公众号允许发布的 OpenID',
         description: '向公众号发送 /whoami 获取；每行或逗号分隔一个 OpenID，未列出的关注者不能发布碎语。'},
       {name: 'qqEnabled', type: 'switch', label: '启用 QQ 私聊发布',
-        description: '官方机器人 Webhook；回调地址 /api/plugins/say/qq，适用于 Vercel。白名单为空时只可使用 /whoami，不允许发布。'},
+        description: '官方机器人 Webhook；回调地址 /api/plugins/say/qq，适用于 Vercel。任何能向机器人发送合规私聊消息的人均可按配置作者发布。'},
       {name: 'qqSandbox', type: 'switch', label: 'QQ 沙箱环境', description: '测试机器人启用；IP 白名单可选，配置后需匹配实际出口 IP。'},
       {name: 'qqAppId', type: 'text', label: 'QQ 机器人 AppID'},
       {name: 'qqAppSecret', type: 'password', label: 'QQ 机器人 AppSecret', description: '留空保留原值；关闭 QQ 开关即可停止接收回调。'},
-      {name: 'qqAllowedOpenIds', type: 'textarea', label: 'QQ 允许发布的 OpenID',
-        description: '向机器人私聊 /whoami 获取，每行一个；不是数字 QQ 号。仅授权可信发布者，消息会公开发布。'},
       {name: 'feishuAppId', type: 'text', label: '飞书 App ID'},
       {name: 'feishuAppSecret', type: 'password', label: '飞书 App Secret',
         description: '用于获取 tenant_access_token 和下载图片、音频；留空会保留原值。'},
       {name: 'feishuVerificationToken', type: 'password', label: '飞书 Verification Token',
         description: '在事件与回调的加密策略中获取；留空会保留原值。'},
       {name: 'feishuEncryptKey', type: 'password', label: '飞书 Encrypt Key',
-        description: '用于回调签名校验和事件解密；留空会保留原值。'},
-      {name: 'feishuAllowedOpenIds', type: 'textarea', label: '飞书允许发布的 OpenID',
-        description: '向机器人发送 /whoami 获取；每行或逗号分隔一个 ou_ 开头的 OpenID，白名单为空时不能发布。'}
+        description: '用于回调签名校验和事件解密；留空保留原值。任何能向机器人发送合规消息的人均可按配置作者发布。'}
     ], load: async() => service.settings(), submit: async values => {
       await service.saveSettings(values);
       return {message: '全部设置已保存。'};

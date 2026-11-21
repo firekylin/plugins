@@ -66,16 +66,18 @@ test('rejects missing raw body, forged signatures, stale timestamps and wrong ap
     assert.equal(f.writes.length, 0);
   }
 });
-test('checks allowlist, supports whoami, ignores other events, and disables callbacks', async() => {
+test('accepts any valid private sender, supports whoami, ignores other events and disables callbacks', async() => {
   const f = fixture();
-  f.settings.qqAllowedOpenIds = '';
+  f.settings.qqAllowedOpenIds = 'SOMEONE_ELSE'; // Obsolete values do not restrict publishing.
   await f.factory()(f.request());
-  assert.equal(f.rows.size, 0);
+  assert.equal(f.writes.length, 1);
+  f.event.d.id = 'WHOAMI_MESSAGE';
   f.event.d.content = '/whoami';
   await f.factory()(f.request());
-  assert.match(f.replies[0][2], /USER/);
-  assert.equal(f.writes.length, 0);
+  assert.match(f.replies[1][2], /USER/);
+  assert.equal(f.writes.length, 1);
   await f.factory()(f.request({...f.event, t: 'GROUP_AT_MESSAGE_CREATE'}));
+  assert.equal(f.writes.length, 1);
   f.settings.qqEnabled = false;
   await assert.rejects(f.factory()(f.request()), {status: 403});
 });
@@ -163,7 +165,6 @@ test('logs safe rejection and ignored-event reasons without echoing attacker val
     [() => {}, r => {r.headers['X-Signature-Timestamp'] = '0'}, 'TIMESTAMP_INVALID'],
     [() => {}, r => {r.headers['X-Signature-Ed25519'] = 'secret-injected'}, 'SIGNATURE_INVALID'],
     [f => {f.event.t = 'secret-injected\nFAKE_LOG'}, () => {}, 'IGNORED_EVENT_TYPE'],
-    [f => {f.settings.qqAllowedOpenIds = ''}, () => {}, 'IGNORED_NOT_ALLOWLISTED'],
     [f => {delete f.event.d.author}, () => {}, 'IGNORED_MESSAGE_SHAPE']
   ];
   for (const [setup, change, expected] of cases) {
