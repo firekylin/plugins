@@ -9,6 +9,7 @@ const STATUSES = new Set(['public', 'private', 'hidden']);
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
   pageSize: 10,
+  autoMergeSeconds: 10,
   apiKey: '',
   authorId: 1,
   amapKey: '',
@@ -66,6 +67,7 @@ function normalizeSettings(value = {}, previous = {}) {
       ? value.qqAppSecret.trim().slice(0, 256) : prior.qqAppSecret,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : prior.enabled,
     pageSize: integer(value.pageSize, prior.pageSize, 1, 100),
+    autoMergeSeconds: integer(value.autoMergeSeconds, prior.autoMergeSeconds, 0, 86400),
     apiKey: typeof value.apiKey === 'string' && value.apiKey ? value.apiKey.slice(0, 256) : prior.apiKey,
     authorId: integer(value.authorId, prior.authorId, 1, Number.MAX_SAFE_INTEGER),
     amapKey: typeof value.amapKey === 'string' ? value.amapKey.trim().slice(0, 256) : prior.amapKey,
@@ -262,6 +264,32 @@ class SayService {
   async create(input, authorId) {
     const data = normalize(input);
     const now = this.now();
+    const settings = await this.settings();
+    if (settings.autoMergeSeconds > 0) {
+      const rows = await this.model().setRelation(false).where({type: SAY_TYPE})
+        .order('create_time DESC, id DESC').limit(1).select();
+      const latest = rows[0];
+      if (latest) {
+        const previous = decode(latest);
+        const elapsed = new Date(now).getTime() - new Date(latest.create_time).getTime();
+        if (elapsed >= 0 && elapsed <= settings.autoMergeSeconds * 1000 &&
+            Number(latest.user_id) === integer(authorId, 1, 1, Number.MAX_SAFE_INTEGER) &&
+            previous.status === data.status && previous.source === data.source &&
+            previous.allowComments === data.allowComments) {
+          let merged;
+          try {
+            await this.assertNoComments([latest.id]);
+            merged = mergeData([previous, data]);
+          } catch (error) {
+            if (![400, 409].includes(error.status)) throw error;
+          }
+          if (merged && (merged.images || []).length <= 20) {
+            const item = await this.update(latest.id, merged);
+            return {...item, autoMerged: true};
+          }
+        }
+      }
+    }
     const visibility = databaseStatus(data.status);
     const token = crypto.randomBytes(6).toString('hex');
     const options = JSON.stringify({say: data});

@@ -153,7 +153,7 @@ function reference(key) {
 }
 
 function success(item, action = 'publish') {
-  return action === 'merge' ? `✅ 已合并为碎语 #${item.id}。` : `✅ 发布成功，碎语 #${item.id}。`;
+  return action === 'merge' || item.autoMerged ? `✅ 已合并为碎语 #${item.id}。` : `✅ 发布成功，碎语 #${item.id}。`;
 }
 
 function failure(error, key, logger) {

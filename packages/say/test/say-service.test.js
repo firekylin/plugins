@@ -23,7 +23,7 @@ function matches(row, where = {}) {
 function fixture() {
   const rows = [];
   const comments = [];
-  const options = new Map();
+  const options = new Map([['plugin_say_settings', JSON.stringify({autoMergeSeconds: 0})]]);
   let nextId = 1;
   class PostModel {
     setRelation() { return this }
@@ -82,7 +82,7 @@ test('normalizes content, tags, URLs and settings', () => {
   assert.throws(() => normalize({kind: 'unknown', text: 'content'}), /Invalid say kind/);
   assert.throws(() => normalize({status: 'privte', text: 'content'}), /Invalid say status/);
   assert.deepEqual(normalizeSettings({pageSize: 999, apiKey: ''}, {apiKey: 'keep'}),
-    {enabled: true, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
+    {enabled: true, autoMergeSeconds: 10, pageSize: 100, apiKey: 'keep', authorId: 1, amapKey: '', wecomCorpId: '',
       wecomCorpSecret: '', wecomToken: '', wecomEncodingAESKey: '', wechatAppId: '', wechatAppSecret: '',
       wechatToken: '', wechatEncodingAESKey: '', wechatAllowedOpenIds: '', feishuAppId: '',
       feishuAppSecret: '', feishuVerificationToken: '', feishuEncryptKey: '',
@@ -235,4 +235,35 @@ test('detail navigation renders only available anchors before comments', () => {
   assert.ok(html.indexOf('aria-label="相邻微博"') < html.indexOf('id="comments"'));
   assert.doesNotMatch(renderSayPage(result, {navigation: {previous: null, next: null}}), /相邻微博/);
   assert.doesNotMatch(renderSayPage(result, {navigation: {previous: null, next: 4}}), /rel="prev"/);
+});
+
+
+test('automatically merges compatible recent messages and respects the configured window', async() => {
+  const {service} = fixture();
+  await service.saveSettings({autoMergeSeconds: 10});
+  const first = await service.create({text: 'caption'}, 1);
+  service.now = () => '2026-10-14 12:00:10';
+  const merged = await service.create({kind: 'image', images: ['https://example.test/a.jpg']}, 1);
+  assert.equal(merged.id, first.id);
+  assert.equal(merged.autoMerged, true);
+  assert.equal(merged.kind, 'textpic');
+  service.now = () => '2026-10-14 12:00:11';
+  const separate = await service.create({kind: 'image', images: ['https://example.test/b.jpg']}, 1);
+  assert.notEqual(separate.id, first.id);
+});
+
+test('auto merge skips disabled, incompatible, commented and differently owned messages', async() => {
+  for (const mode of ['disabled', 'kind', 'comments', 'author', 'source', 'status', 'future']) {
+    const {service, comments} = fixture();
+    await service.saveSettings({autoMergeSeconds: mode === 'disabled' ? 0 : 10});
+    const first = await service.create({text: 'caption'}, 1);
+    if (mode === 'comments') comments.push({post_id: first.id});
+    if (mode === 'future') service.now = () => '2026-10-14 11:59:59';
+    const input = mode === 'kind' ? {text: 'another text'} :
+      {kind: 'image', images: ['https://example.test/a.jpg']};
+    if (mode === 'source') input.source = 'QQ';
+    if (mode === 'status') input.status = 'private';
+    const second = await service.create(input, mode === 'author' ? 2 : 1);
+    assert.notEqual(second.id, first.id, mode);
+  }
 });
