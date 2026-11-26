@@ -33,15 +33,19 @@ const statusOptions = [
 ];
 function formatAdminDate(value) {
   if (!value) return '—';
-  // Database date strings already carry the site's wall-clock date.
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?: |$)/.test(value)) {
-    return value.slice(0, 10);
+  // Database strings already represent the site's wall-clock time.
+  if (typeof value === 'string') {
+    const match = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}:\d{2})(?:\.\d+)?)?$/.exec(value);
+    if (match) return `${match[1]} ${match[2] || '00:00:00'}`;
   }
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(date);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date);
+  const fields = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${fields.year}-${fields.month}-${fields.day} ${fields.hour}:${fields.minute}:${fields.second}`;
 }
 
 const publishFields = [
