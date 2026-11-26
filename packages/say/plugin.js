@@ -541,6 +541,7 @@ module.exports = {
     ctx.admin.registerForm({id: 'say-basic-settings', page: 'settings', title: '碎语设置',
       submitLabel: '保存全部设置', fields: [
       {name: 'enabled', type: 'switch', label: '启用公开列表和消息发布'},
+      {name: 'autoMergeSeconds', type: 'number', label: '自动合并间隔（秒，默认 10，0 关闭，最大 86400）'},
       {name: 'pageSize', type: 'number', label: '每页数量', required: true},
       {name: 'authorId', type: 'number', label: '发布作者 ID', required: true,
         description: '外部 API、企业微信、微信公众号、飞书和 QQ 发布的碎语都会归属到这个用户。'},
