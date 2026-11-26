@@ -9,7 +9,7 @@ const feedback = require('./lib/publish-feedback');
 const {whoami} = require('./lib/commands');
 const {createQqWebhook} = require('./lib/qq-webhook');
 const {renderSayPage, createSayViewModel} = require('./lib/render');
-const {listUrl, tagUrl} = require('./lib/urls');
+const {listUrl, tagUrl, detailUrl} = require('./lib/urls');
 const {renderWalineComments} = require('./lib/comment-render');
 const {SayComments} = require('./lib/comments');
 const {FrontendPublish, renderComposer} = require('./lib/frontend-publish');
@@ -31,6 +31,19 @@ const kindOptions = [
 const statusOptions = [
   {label: '公开', value: 'public'}, {label: '私密', value: 'private'}, {label: '隐藏', value: 'hidden'}
 ];
+function formatAdminDate(value) {
+  if (!value) return '—';
+  // Database date strings already carry the site's wall-clock date.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?: |$)/.test(value)) {
+    return value.slice(0, 10);
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(date);
+}
+
 const publishFields = [
   {name: 'kind', type: 'radio', label: '类型', required: true, options: kindOptions},
   {name: 'status', type: 'radio', label: '状态', required: true, options: statusOptions},
@@ -472,12 +485,15 @@ module.exports = {
               {key: 'delete', label: '删除', action: 'delete-says', type: 'danger'}
             ]},
             toolbar: [{label: '新增碎语', href: '/admin/plugins/say/publish', type: 'primary'}], columns: [
-            {key: 'id', title: 'ID'}, {key: 'kind', title: '类型'}, {key: 'status', title: '状态'},
+            {key: 'idLink', title: 'ID', type: 'actions'}, {key: 'kind', title: '类型'}, {key: 'status', title: '状态'},
             {key: 'content', title: '内容'}, {key: 'tags', title: '标签'}, {key: 'createdAt', title: '时间'},
             {key: 'actions', title: '操作', type: 'actions'}
-          ], rows: items.map(item => ({id: item.id, kind: item.kind, status: item.status,
+          ], rows: items.map(item => ({id: item.id,
+            idLink: [{label: String(item.id), href: detailUrl(item.id)}],
+            kind: kindOptions.find(option => option.value === item.kind)?.label || item.kind,
+            status: statusOptions.find(option => option.value === item.status)?.label || item.status,
             content: item.text || item.title || item.url, tags: item.tags.map(tag => `#${tag}`).join(' '),
-            createdAt: item.createdAt, actions: [
+            createdAt: formatAdminDate(item.createdAt), actions: [
               {label: '编辑', href: `/admin/plugins/say/edit?id=${item.id}`},
               {label: item.status === 'public' ? '设为私密' : '设为公开', action: 'toggle-say',
                 input: {id: item.id, status: item.status === 'public' ? 'private' : 'public'}},
