@@ -267,3 +267,34 @@ test('auto merge skips disabled, incompatible, commented and differently owned m
     assert.notEqual(second.id, first.id, mode);
   }
 });
+
+
+test('concurrent automatic merges preserve every acknowledged image', async() => {
+  const {service} = fixture();
+  await service.saveSettings({autoMergeSeconds: 10});
+  const caption = await service.create({text: 'caption'}, 1);
+  const images = ['https://example.test/a.jpg', 'https://example.test/b.jpg'];
+  const results = await Promise.all(images.map(image =>
+    service.create({kind: 'image', images: [image]}, 1)));
+  assert.equal(results.filter(item => item.autoMerged).length, 1);
+  assert.equal(new Set(results.map(item => item.id)).size, 2);
+  const stored = await service.all();
+  assert.deepEqual(stored.flatMap(item => item.images).sort(), images);
+  assert.equal(stored.find(item => item.id === caption.id).text, 'caption');
+  for (const result of results) {
+    assert.ok(stored.some(item => item.id === result.id));
+  }
+});
+
+
+test('independent service instances cannot overwrite each other during auto merge', async() => {
+  const {service} = fixture();
+  const other = new SayService({getModel: service.getModel, now: service.now});
+  await service.saveSettings({autoMergeSeconds: 10});
+  await service.create({text: 'caption'}, 1);
+  const images = ['https://example.test/one.jpg', 'https://example.test/two.jpg'];
+  const results = await Promise.all([service, other].map((instance, index) =>
+    instance.create({kind: 'image', images: [images[index]]}, 1)));
+  assert.equal(results.filter(item => item.autoMerged).length, 1);
+  assert.deepEqual((await service.all()).flatMap(item => item.images).sort(), images);
+});

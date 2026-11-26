@@ -284,8 +284,33 @@ class SayService {
             if (![400, 409].includes(error.status)) throw error;
           }
           if (merged && (merged.images || []).length <= 20) {
-            const item = await this.update(latest.id, merged);
-            return {...item, autoMerged: true};
+            const combined = normalize(merged);
+            // Compare the stored snapshot in the UPDATE itself. A timestamp alone
+            // is insufficient: multiple publications can arrive in one second.
+            const changed = await this.model().where({
+              id: latest.id,
+              type: SAY_TYPE,
+              options: latest.options,
+              user_id: latest.user_id,
+              status: latest.status,
+              is_public: latest.is_public,
+              allow_comment: latest.allow_comment,
+              comment_num: latest.comment_num,
+              update_time: latest.update_time
+            }).update({
+              title: combined.kind,
+              summary: combined.text.slice(0, 200),
+              markdown_content: combined.text,
+              content: combined.text,
+              update_time: now,
+              options: JSON.stringify({say: combined})
+            });
+            if (Number(changed) === 1) {
+              return {...combined, id: Number(latest.id), createdAt: latest.create_time,
+                updatedAt: now, autoMerged: true};
+            }
+            // Another writer won. Insert this publication independently below;
+            // never acknowledge it as merged or overwrite the winning update.
           }
         }
       }
